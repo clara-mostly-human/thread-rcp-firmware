@@ -14,6 +14,7 @@ fb0446f53). Everything is source except RAIL, the radio library, which Silicon L
   - `simplicity-sdk-2025.6.3.zip` — github.com/SiliconLabs/simplicity_sdk release asset (MSLA licence)
   - `slc_cli_mac.zip` — Silicon Labs project generator (needs a Java 17+ runtime)
   - `arm-gnu-toolchain-12.2.rel1-darwin-arm64-arm-none-eabi.tar.xz` — Arm GNU toolchain 12.2.1
+  - `amazon-corretto-17-aarch64-macos-jdk.tar.gz` — Java 17 runtime for `slc`, run from `vendor/unpacked/jdk`, not installed system-wide
   - `unpacked/` — the three of them extracted
 - `board/` — what we know about the hardware and how we know it
 - `scripts/gbl.py` — inspect and create `.gbl` upgrade files (replaces Simplicity Commander)
