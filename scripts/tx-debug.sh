@@ -46,26 +46,30 @@ cli "state" >/dev/null
 cli "log level 4" >/dev/null
 echo "rcp: $(cli "rcp version" | head -1)"
 for c in "dataset clear" "dataset channel $(f Channel)" "dataset panid $(f 'PAN ID')" "dataset extpanid $(f 'Ext PAN ID')" \
-         "dataset networkkey $(f 'Network Key')" "dataset networkname $(f 'Network Name')" "dataset activetimestamp 1" "dataset commit active"; do cli "$c" >/dev/null; done
+         "dataset networkkey $(f 'Network Key')" "dataset meshlocalprefix $(f 'Mesh Local Prefix' | sed 's,/64$,,')" "dataset networkname $(f 'Network Name')" "dataset activetimestamp 1" "dataset commit active"; do cli "$c" >/dev/null; done
 cli "ifconfig up" >/dev/null; cli "thread start" >/dev/null
 STATE=""; for _ in $(seq 1 60); do STATE=$(cli "state" | head -1); case "$STATE" in child | router) break ;; esac; sleep 2; done
 echo "node: ${STATE:-?} rloc16 $(cli rloc16 | head -1), txpower $(cli txpower | head -1)"
 case "$STATE" in child | router) ;; *) echo "FAIL: did not attach"; exit 1 ;; esac
 PARENT_RLOC=$(cli "parent" | awk -F': ' '/Rloc/ {print $2}')
-MLP=$(cli "ipaddr mleid" | head -1 | cut -d: -f1-4)
+MLP=$(cli "ipaddr rloc" | head -1 | cut -d: -f1-4)
 PARENT="${MLP}:0:ff:fe00:${PARENT_RLOC}"
+# The production border router's view: why does it discard what it discards?
+prod_rx() { "$OTCTL" -I "$PROD_IF" counters mac | tr -d '\r' | grep -E 'RxTotal|RxErrSec|RxDuplicated|RxErrUnknownNeighbor|RxErrInvalidSrcAddr|RxErrFcs|RxErrOther|RxErrNoFrame' | tr -s ' ' | tr '\n' ';'; }
 echo "parent: rloc16 ${PARENT_RLOC:-?} -> $PARENT; $(cli parent | grep -E 'Link Quality|Age|RSSI' | tr '\n' ' ')"
 
 health() { # after a stage: RCP answers? unicast still works? counters
     local v p
-    v=$(cli "rcp version" 20 | head -1); p=$(cli "ping $PARENT 8 2 0.5 64 3" 40 | grep -c 'bytes from')
+    v=$(cli "rcp version" 20 | head -1); p=$(cli "ping $PARENT 8 2 0.3 64 1" 20 | grep -c 'bytes from')
     echo "    rcp answers: $([ -n "$v" ] && echo yes || echo NO); ping parent: $p/2"
+    echo "    BR rx: $(prod_rx)"
     cli "counters mac" | grep -E 'TxTotal|TxBroadcast|TxUnicast|TxErrCca|TxErrAbort|TxErrBusyChannel|TxAcked|TxNoAckRequested|RxTotal' | tr -s ' ' | tr '\n' ';' | sed 's/^/    /'; echo
 }
+cli "txpower 10" >/dev/null; echo "txpower now $(cli txpower | head -1)"
 echo "=== baseline"; health
-echo "=== stage 1: secured unicast, 5 pings to the parent"; echo "    replies: $(cli "ping $PARENT 32 5 0.5 64 3" 60 | grep -c 'bytes from')/5"; health
-echo "=== stage 2: link-local multicast, 3 pings to ff02::1"; echo "    replies: $(cli "ping ff02::1 32 3 1 64 3" 60 | grep -c 'bytes from')"; health
-echo "=== stage 3: realm-local multicast, 3 pings to ff03::1"; echo "    replies: $(cli "ping ff03::1 32 3 1 64 3" 60 | grep -c 'bytes from')"; health
+echo "=== stage 1: secured unicast, 5 pings to the parent"; echo "    replies: $(cli "ping $PARENT 32 5 0.3 64 1" 30 | grep -c 'bytes from')/5"; health
+echo "=== stage 2: link-local multicast, 3 pings to ff02::1"; echo "    replies: $(cli "ping ff02::1 32 3 0.5 64 1" 30 | grep -c 'bytes from')"; health
+echo "=== stage 3: realm-local multicast, 3 pings to ff03::1"; echo "    replies: $(cli "ping ff03::1 32 3 0.5 64 1" 30 | grep -c 'bytes from')"; health
 echo "=== stage 4: site-local UDP groupcast x5 (what the soak sends)"; cli "udp open" >/dev/null
 for i in 1 2 3 4 5; do cli "udp send ff05::abcd 1234 dbg-$i" 20 >/dev/null; sleep 0.5; done; health
 echo "=== done: state $(cli state 20 | head -1)"
