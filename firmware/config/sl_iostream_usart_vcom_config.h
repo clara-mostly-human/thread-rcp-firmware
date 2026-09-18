@@ -61,7 +61,8 @@
 // <usartHwFlowControlCtsAndRts=> CTS/RTS
 // <uartFlowControlSoftware=> Software Flow control (XON/XOFF)
 // <i> Default: usartHwFlowControlNone
-#define SL_IOSTREAM_USART_VCOM_FLOW_CONTROL_TYPE     usartHwFlowControlCtsAndRts
+// Dongle-PMG24: CTS/RTS are not wired between the CP2102N and the MG24 (board/dongle-pmg24.md).
+#define SL_IOSTREAM_USART_VCOM_FLOW_CONTROL_TYPE     usartHwFlowControlNone
 
 // <o SL_IOSTREAM_USART_VCOM_RX_BUFFER_SIZE> Receive buffer size
 // <i> Default: 32
@@ -84,21 +85,16 @@
 // <<< sl:start pin_tool >>>
 // <usart signal=TX,RX,(CTS),(RTS)> SL_IOSTREAM_USART_VCOM
 // $[USART_SL_IOSTREAM_USART_VCOM]
-#warning "IO Stream USART peripheral not configured"
-// #define SL_IOSTREAM_USART_VCOM_PERIPHERAL      USART0
-// #define SL_IOSTREAM_USART_VCOM_PERIPHERAL_NO   0
+// Dongle-PMG24: host UART to the CP2102N is USART0, TX = PC01, RX = PC02 (board/dongle-pmg24.md).
+#define SL_IOSTREAM_USART_VCOM_PERIPHERAL      USART0
+#define SL_IOSTREAM_USART_VCOM_PERIPHERAL_NO   0
 
-// #define SL_IOSTREAM_USART_VCOM_TX_PORT         gpioPortC
-// #define SL_IOSTREAM_USART_VCOM_TX_PIN          11
+#define SL_IOSTREAM_USART_VCOM_TX_PORT         gpioPortC
+#define SL_IOSTREAM_USART_VCOM_TX_PIN          1
 
-// #define SL_IOSTREAM_USART_VCOM_RX_PORT         gpioPortC
-// #define SL_IOSTREAM_USART_VCOM_RX_PIN          10
+#define SL_IOSTREAM_USART_VCOM_RX_PORT         gpioPortC
+#define SL_IOSTREAM_USART_VCOM_RX_PIN          2
 
-// #define SL_IOSTREAM_USART_VCOM_CTS_PORT        gpioPortA
-// #define SL_IOSTREAM_USART_VCOM_CTS_PIN         12
-
-// #define SL_IOSTREAM_USART_VCOM_RTS_PORT        gpioPortC
-// #define SL_IOSTREAM_USART_VCOM_RTS_PIN         8
 // [USART_SL_IOSTREAM_USART_VCOM]$
 // <<< sl:end pin_tool >>>
 

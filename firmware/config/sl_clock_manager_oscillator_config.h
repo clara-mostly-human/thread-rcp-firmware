@@ -76,13 +76,16 @@
 // <o SL_CLOCK_MANAGER_HFXO_FREQ> Frequency in Hz <38000000-40000000>
 // <d> 39000000
 #ifndef SL_CLOCK_MANAGER_HFXO_FREQ
-#define SL_CLOCK_MANAGER_HFXO_FREQ    39000000
+// Dongle-PMG24: the crystal is 38.4 MHz; at the SDK default of 39 MHz the radio is ~37 MHz off channel.
+#define SL_CLOCK_MANAGER_HFXO_FREQ    38400000
 #endif
 
 // <o SL_CLOCK_MANAGER_HFXO_CTUNE> CTUNE <0-255>
 // <d> 140
 #ifndef SL_CLOCK_MANAGER_HFXO_CTUNE
-#define SL_CLOCK_MANAGER_HFXO_CTUNE    140
+// Dongle-PMG24: 100 is what SONOFF's own Zigbee firmware reports on this unit (CONFIG_CTUNE_VALUE);
+// the community build uses 128, the SDK default is 140. To be confirmed on the air.
+#define SL_CLOCK_MANAGER_HFXO_CTUNE    100
 #endif
 
 // <o SL_CLOCK_MANAGER_HFXO_PRECISION> Precision in PPM <0-65535>

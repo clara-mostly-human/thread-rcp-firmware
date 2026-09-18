@@ -7,3 +7,4 @@ build/
 out/*.s37
 out/*.hex
 out/*.map
+firmware/build/
