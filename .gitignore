@@ -1,0 +1,9 @@
+# Large third-party archives and their unpacked trees live on disk but not in git;
+# vendor/SHA256SUMS (tracked) pins exactly which files they are.
+vendor/*.zip
+vendor/*.tar.xz
+vendor/unpacked/
+build/
+out/*.s37
+out/*.hex
+out/*.map
