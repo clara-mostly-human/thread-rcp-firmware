@@ -18,7 +18,9 @@ pkill -f "ot-cli.*usbserial-1120" 2>/dev/null && sleep 1
 
 PROD_IF=""
 for f in /var/run/openthread-utun*.sock; do [ -S "$f" ] && { PROD_IF=$(basename "$f" .sock | sed 's#^openthread-##'); break; }; done
-OTCTL=$(pgrep -fl 'src/agent/otbr-agent' | head -1 | awk '{print $2}' | sed 's#/src/agent/otbr-agent$#/third_party/openthread/repo/src/posix/ot-ctl#')
+# By exact process name: matching the command line also catches unrelated shells that mention the path.
+AGENT=$(ps -o command= -p "$(pgrep -x otbr-agent | head -1)" 2>/dev/null | awk '{print $1}')
+OTCTL="${AGENT%/src/agent/otbr-agent}/third_party/openthread/repo/src/posix/ot-ctl"
 [ -n "$PROD_IF" ] && [ -x "$OTCTL" ] || { echo "production agent / ot-ctl not found" >&2; exit 1; }
 DS=$("$OTCTL" -I "$PROD_IF" dataset active | tr -d '\r')
 f() { echo "$DS" | awk -F': ' -v k="$1" '$1==k {print $2; exit}'; }
