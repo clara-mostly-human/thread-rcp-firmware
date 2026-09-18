@@ -1,0 +1,7 @@
+vendor/unpacked
+vendor/*.tar.xz
+vendor/simplicity-sdk-*.zip
+vendor/slc_cli_mac.zip
+build
+out
+.git
