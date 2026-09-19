@@ -1216,10 +1216,11 @@ $(OUTPUT_DIR)/sdk/protocol/openthread/platform-abstraction/efr32/misc.o: $(SDK_P
 CDEPS += $(OUTPUT_DIR)/sdk/protocol/openthread/platform-abstraction/efr32/misc.d
 OBJS += $(OUTPUT_DIR)/sdk/protocol/openthread/platform-abstraction/efr32/misc.o
 
-$(OUTPUT_DIR)/sdk/protocol/openthread/platform-abstraction/efr32/radio.o: $(SDK_PATH)/protocol/openthread/platform-abstraction/efr32/radio.c
-	@$(POSIX_TOOL_PATH)echo 'Building $(SDK_PATH)/protocol/openthread/platform-abstraction/efr32/radio.c'
+# Local override of the SDK's radio.c (see firmware/override/README.md).
+$(OUTPUT_DIR)/sdk/protocol/openthread/platform-abstraction/efr32/radio.o: override/radio.c
+	@$(POSIX_TOOL_PATH)echo 'Building override/radio.c'
 	@$(POSIX_TOOL_PATH)mkdir -p $(@D)
-	$(ECHO)$(CC) $(CFLAGS) -c -o $@ $(SDK_PATH)/protocol/openthread/platform-abstraction/efr32/radio.c
+	$(ECHO)$(CC) $(CFLAGS) -c -o $@ override/radio.c
 CDEPS += $(OUTPUT_DIR)/sdk/protocol/openthread/platform-abstraction/efr32/radio.d
 OBJS += $(OUTPUT_DIR)/sdk/protocol/openthread/platform-abstraction/efr32/radio.o
 
