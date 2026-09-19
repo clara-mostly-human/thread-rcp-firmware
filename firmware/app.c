@@ -136,8 +136,11 @@ void app_init(void)
 /******************************************************************************
  * Application Process Action.
  *****************************************************************************/
+extern void localAssertProcess(void); // LOCAL: local/local_assert.c
+
 void app_process_action(void)
 {
+    localAssertProcess(); // LOCAL
     otTaskletsProcess(sInstance);
     otSysProcessDrivers(sInstance);
 }

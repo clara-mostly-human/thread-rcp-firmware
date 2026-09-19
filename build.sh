@@ -5,6 +5,8 @@ set -euo pipefail
 cd "$(dirname "$0")"
 V="$PWD/vendor/unpacked"
 [ -d "$V/simplicity_sdk" ] || { echo "unpack vendor/ first (see README.md)" >&2; exit 1; }
+# Always from scratch: make does not notice changed -D flags, and a full build takes ~5 s.
+rm -rf firmware/build
 make -C firmware -f ot-rcp.Makefile -j8 SDK_PATH="$V/simplicity_sdk" BASE_SDK_PATH="$V/simplicity_sdk" \
     ARM_GCC_DIR="$V/arm-gnu-toolchain-12.2.rel1-darwin-arm64-arm-none-eabi" >build/make.log 2>&1 \
     || { tail -30 build/make.log; exit 1; }

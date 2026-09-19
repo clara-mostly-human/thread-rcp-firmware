@@ -27,7 +27,8 @@ LIB_FILES        += $(filter %.a, $(PROJECT_SOURCE_FILES))
 
 # LOCAL: Silicon Labs' radio debug counters (board_config.h defaults them off).
 C_DEFS += \
- '-DRADIO_CONFIG_DEBUG_COUNTERS_SUPPORT=1'
+ '-DRADIO_CONFIG_DEBUG_COUNTERS_SUPPORT=1' \
+ '-DOPENTHREAD_CONFIG_PLATFORM_ASSERT_MANAGEMENT=1'
 
 C_DEFS += \
  '-DEFR32MG24A020F1024IM40=1' \
@@ -1219,6 +1220,14 @@ $(OUTPUT_DIR)/sdk/protocol/openthread/platform-abstraction/efr32/misc.o: $(SDK_P
 	$(ECHO)$(CC) $(CFLAGS) -c -o $@ $(SDK_PATH)/protocol/openthread/platform-abstraction/efr32/misc.c
 CDEPS += $(OUTPUT_DIR)/sdk/protocol/openthread/platform-abstraction/efr32/misc.d
 OBJS += $(OUTPUT_DIR)/sdk/protocol/openthread/platform-abstraction/efr32/misc.o
+
+# LOCAL: assert recorder
+$(OUTPUT_DIR)/project/local/local_assert.o: local/local_assert.c
+	@$(POSIX_TOOL_PATH)echo 'Building local/local_assert.c'
+	@$(POSIX_TOOL_PATH)mkdir -p $(@D)
+	$(ECHO)$(CC) $(CFLAGS) -c -o $@ local/local_assert.c
+CDEPS += $(OUTPUT_DIR)/project/local/local_assert.d
+OBJS += $(OUTPUT_DIR)/project/local/local_assert.o
 
 # Local override of the SDK's radio.c (see firmware/override/README.md).
 $(OUTPUT_DIR)/sdk/protocol/openthread/platform-abstraction/efr32/radio.o: override/radio.c
