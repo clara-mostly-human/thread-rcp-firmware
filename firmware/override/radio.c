@@ -340,6 +340,21 @@ efr32RadioCounters railDebugCounters;
 #define rxDebugStep (railDebugCounters.mRadioDebugData.m8[RX_DEBUG_COUNTER0])
 #endif
 
+// ---- LOCAL (thread-rcp-firmware): stuck-transmit watchdog ---------------------------------------
+// The host gives up on a transmit after 5 s ("radio tx timeout"). If the stack has not been told a
+// transmit is done within LOCAL_TX_STUCK_MS, report what the radio layer looks like, once, through
+// the OpenThread log (which the RCP forwards to the host over Spinel).
+#define LOCAL_TX_STUCK_MS 1000
+static volatile bool sLocalTxAwaitingDone = false;
+static bool          sLocalTxStuckReported = false;
+static uint32_t      sLocalTxRequestedAtMs = 0;
+static uint32_t      sLocalTxRequests      = 0;
+static uint32_t      sLocalTxDones         = 0;
+static uint32_t      sLocalTxStuckCount    = 0;
+static void          localReportStuckTx(void);
+// ---- end LOCAL ------------------------------------------------------------------------------------
+
+
 #if OPENTHREAD_CONFIG_MULTIPAN_RCP_ENABLE
 // Type of commands that can be added to the pending command buffer.
 typedef enum
@@ -1857,6 +1872,12 @@ otError otPlatRadioTransmit(otInstance *aInstance, otRadioFrame *aFrame)
         // this results in calling the SE interface from a critical section which is not permitted.
         radioProcessTransmitSecurity(&sCurrentTxPacket->frame, sCurrentTxPacket->iid);
 #endif // OPENTHREAD_CONFIG_THREAD_VERSION >= OT_THREAD_VERSION_1_2
+
+        // LOCAL: arm the stuck-transmit watchdog
+        sLocalTxRequestedAtMs = otPlatAlarmMilliGetNow();
+        sLocalTxStuckReported = false;
+        sLocalTxAwaitingDone  = true;
+        sLocalTxRequests++;
 
         CORE_DECLARE_IRQ_STATE;
         CORE_ENTER_ATOMIC();
@@ -3562,6 +3583,10 @@ static void processTxComplete(otInstance *aInstance)
 #endif
         }
 
+        // LOCAL: the stack has been told; disarm the watchdog
+        sLocalTxAwaitingDone = false;
+        sLocalTxDones++;
+
 #if RADIO_CONFIG_DEBUG_COUNTERS_SUPPORT
         railDebugCounters.mRailPlatRadioTxDoneCbCount++;
 #endif
@@ -3632,6 +3657,57 @@ void efr32RadioProcess(otInstance *aInstance)
 #if OPENTHREAD_CONFIG_MULTIPAN_RCP_ENABLE
     processPendingCommands();
 #endif // OPENTHREAD_CONFIG_MULTIPAN_RCP_ENABLE
+
+    // LOCAL: stuck-transmit watchdog
+    if (sLocalTxAwaitingDone && !sLocalTxStuckReported
+        && (uint32_t)(otPlatAlarmMilliGetNow() - sLocalTxRequestedAtMs) > LOCAL_TX_STUCK_MS)
+    {
+        sLocalTxStuckReported = true;
+        sLocalTxStuckCount++;
+        localReportStuckTx();
+    }
+}
+
+// LOCAL: one log line per fact, so that a truncated line loses little.
+static void localReportStuckTx(void)
+{
+    uint32_t flags = miscRadioState;
+
+    otLogCritPlat("LOCAL tx stuck #%lu: no TxDone %lu ms after request (requests %lu, dones %lu)",
+                  (unsigned long)sLocalTxStuckCount, (unsigned long)(otPlatAlarmMilliGetNow() - sLocalTxRequestedAtMs),
+                  (unsigned long)sLocalTxRequests, (unsigned long)sLocalTxDones);
+    otLogCritPlat("LOCAL flags 0x%08lx: ongoingTxData=%d ongoingTxAck=%d waitingForAck=%d useCsma=%d schedTxPending=%d "
+                  "txEvents=0x%lx",
+                  (unsigned long)flags, (flags & FLAG_ONGOING_TX_DATA) != 0, (flags & FLAG_ONGOING_TX_ACK) != 0,
+                  (flags & FLAG_WAITING_FOR_ACK) != 0, (flags & FLAG_CURRENT_TX_USE_CSMA) != 0,
+                  (flags & FLAG_SCHEDULED_TX_PENDING) != 0, (unsigned long)(flags & RADIO_TX_EVENTS));
+    otLogCritPlat("LOCAL rail state 0x%lx detail 0x%lx", (unsigned long)sl_rail_get_radio_state(gRailHandle),
+                  (unsigned long)sl_rail_get_radio_state_detail(gRailHandle));
+    if (sCurrentTxPacket != NULL)
+    {
+        otLogCritPlat("LOCAL frame len %u ch %u fcf 0x%02x%02x csma %d txDelay %lu isRetx %d",
+                      sCurrentTxPacket->frame.mLength, sCurrentTxPacket->frame.mChannel,
+                      sCurrentTxPacket->frame.mPsdu[1], sCurrentTxPacket->frame.mPsdu[0],
+                      sCurrentTxPacket->frame.mInfo.mTxInfo.mCsmaCaEnabled,
+                      (unsigned long)sCurrentTxPacket->frame.mInfo.mTxInfo.mTxDelay,
+                      sCurrentTxPacket->frame.mInfo.mTxInfo.mIsARetx);
+    }
+#if RADIO_CONFIG_DEBUG_COUNTERS_SUPPORT
+    otLogCritPlat("LOCAL tx: triggered %lu started %lu startFailed %lu sent %lu chBusy %lu noAck %lu abort %lu doneCb %lu",
+                  (unsigned long)railDebugCounters.mRailPlatTxTriggered, (unsigned long)railDebugCounters.mRailTxStarted,
+                  (unsigned long)railDebugCounters.mRailTxStartFailed, (unsigned long)railDebugCounters.mRailEventPacketSent,
+                  (unsigned long)railDebugCounters.mRailEventChannelBusy, (unsigned long)railDebugCounters.mRailEventNoAck,
+                  (unsigned long)railDebugCounters.mRailEventTxAbort,
+                  (unsigned long)railDebugCounters.mRailPlatRadioTxDoneCbCount);
+    otLogCritPlat("LOCAL sched: statusErr %lu txBusy %lu lastStatus %lu enhAckFail %lu | rx: received %lu acks %lu doneCb %lu",
+                  (unsigned long)railDebugCounters.mRailEventSchedulerStatusError,
+                  (unsigned long)railDebugCounters.mRailEventsSchedulerStatusTransmitBusy,
+                  (unsigned long)railDebugCounters.mRailEventsSchedulerStatusLastStatus,
+                  (unsigned long)railDebugCounters.mRailEventsEnhAckTxFailed,
+                  (unsigned long)railDebugCounters.mRailEventPacketReceived,
+                  (unsigned long)railDebugCounters.mRailEventAcksReceived,
+                  (unsigned long)railDebugCounters.mRailPlatRadioReceiveDoneCbCount);
+#endif
 }
 
 //------------------------------------------------------------------------------

@@ -25,6 +25,10 @@ ASM_SOURCE_FILES += $(filter %.s, $(PROJECT_SOURCE_FILES))
 ASM_SOURCE_FILES += $(filter %.S, $(PROJECT_SOURCE_FILES))
 LIB_FILES        += $(filter %.a, $(PROJECT_SOURCE_FILES))
 
+# LOCAL: Silicon Labs' radio debug counters (board_config.h defaults them off).
+C_DEFS += \
+ '-DRADIO_CONFIG_DEBUG_COUNTERS_SUPPORT=1'
+
 C_DEFS += \
  '-DEFR32MG24A020F1024IM40=1' \
  '-DSL_CODE_COMPONENT_SYSTEM=system' \
