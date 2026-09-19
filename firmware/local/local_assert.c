@@ -31,19 +31,67 @@ static local_assert_record_t sBootCopy; // what we found at boot, for reporting
 static uint8_t               sReportsLeft = 0;
 static uint32_t              sNextReportMs;
 
-void otPlatAssertFail(const char *aFilename, int aLineNumber)
+static void localRecordAndReset(const char *aWhat, uint32_t aLine) __attribute__((noreturn));
+static void localRecordAndReset(const char *aWhat, uint32_t aLine)
 {
-    size_t length = strlen(aFilename);
+    size_t length = strlen(aWhat);
     size_t keep   = sizeof(sRecord.file) - 1;
 
     __disable_irq();
     sRecord.count = (sRecord.magic == LOCAL_ASSERT_MAGIC) ? sRecord.count + 1 : 1;
     sRecord.magic = LOCAL_ASSERT_MAGIC;
-    sRecord.line  = (uint32_t)aLineNumber;
-    // The end of the path is the informative part.
-    strncpy(sRecord.file, (length > keep) ? aFilename + (length - keep) : aFilename, keep);
+    sRecord.line  = aLine;
+    // The end of a path is the informative part.
+    strncpy(sRecord.file, (length > keep) ? aWhat + (length - keep) : aWhat, keep);
     sRecord.file[keep] = '\0';
     NVIC_SystemReset();
+    while (1) {}
+}
+
+// OpenThread: OT_ASSERT with OPENTHREAD_CONFIG_PLATFORM_ASSERT_MANAGEMENT=1.
+void otPlatAssertFail(const char *aFilename, int aLineNumber) { localRecordAndReset(aFilename, (uint32_t)aLineNumber); }
+
+// RAIL (the radio library): both generations of its assert callback are weak symbols whose default
+// is an endless loop. "RAIL#<code>" + the library's auxiliary line; codes are listed in
+// platform/radio/rail_lib/common/sl_rail_assert_error_codes.h.
+static void localRailAssert(uint32_t aCode, uint32_t aLine)
+{
+    char  what[16] = "RAIL#";
+    char *p        = what + 5;
+    char  digits[10];
+    int   n = 0;
+
+    do
+    {
+        digits[n++] = (char)('0' + (aCode % 10));
+        aCode /= 10;
+    } while (aCode > 0 && n < (int)sizeof(digits));
+    while (n > 0)
+    {
+        *p++ = digits[--n];
+    }
+    *p = '\0';
+    localRecordAndReset(what, aLine);
+}
+
+void sl_railcb_assert_failed(void *aRailHandle, uint32_t aErrorCode, int aLine)
+{
+    (void)aRailHandle;
+    localRailAssert(aErrorCode, (uint32_t)aLine);
+}
+
+void RAILCb_AssertFailed(void *aRailHandle, uint32_t aErrorCode)
+{
+    (void)aRailHandle;
+    localRailAssert(aErrorCode, 0);
+}
+
+// newlib: the C assert() macro (used by app.c and third-party code) ends in abort(), which spins.
+void __assert_func(const char *aFile, int aLine, const char *aFunction, const char *aExpression)
+{
+    (void)aFunction;
+    (void)aExpression;
+    localRecordAndReset(aFile, (uint32_t)aLine);
 }
 
 // Call from the application loop. Reports twice (at 1 s and 6 s after boot) because the host may
@@ -70,7 +118,7 @@ void localAssertProcess(void)
 
     if (sReportsLeft > 0 && (int32_t)(otPlatAlarmMilliGetNow() - sNextReportMs) >= 0)
     {
-        otLogCritPlat("LOCAL assert before this boot: %s:%lu (assert #%lu since power-up)", sBootCopy.file,
+        otLogCritPlat("LOCAL halt before this boot: %s:%lu (#%lu since power-up)", sBootCopy.file,
                       (unsigned long)sBootCopy.line, (unsigned long)sBootCopy.count);
         sReportsLeft--;
         sNextReportMs = otPlatAlarmMilliGetNow() + 5000;
