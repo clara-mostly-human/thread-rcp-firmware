@@ -66,7 +66,10 @@
 
 // <o SL_IOSTREAM_USART_VCOM_RX_BUFFER_SIZE> Receive buffer size
 // <i> Default: 32
-#define SL_IOSTREAM_USART_VCOM_RX_BUFFER_SIZE    32
+// Dongle-PMG24: no flow control, so this ring is all that stands between the host and lost bytes.
+// At 460800 baud the SDK default of 32 bytes fills in 0.7 ms; one Spinel transmit request is
+// 150-270 bytes. 2048 holds several back-to-back requests while the main loop handles a radio burst.
+#define SL_IOSTREAM_USART_VCOM_RX_BUFFER_SIZE    2048
 
 // <q SL_IOSTREAM_USART_VCOM_CONVERT_BY_DEFAULT_LF_TO_CRLF> Convert \n to \r\n
 // <i> It can be changed at runtime using the C API.
