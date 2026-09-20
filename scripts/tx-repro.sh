@@ -74,15 +74,10 @@ for r in $(seq 1 "$ROUNDS"); do
     N=$(cli "ping ff03::1 64 5 0.2 64 1" 30 | grep -c 'bytes from')
     printf 'round %2d: %2d replies to 5 realm-local multicast pings (t+%ds)\n' "$r" "$N" "$(( $(date +%s) - START ))"
 done
-# The host exits as soon as the RCP resets, before the firmware's post-boot report. The assert
-# record survives resets, so listen once more with a fresh host for a few seconds.
+# Do NOT reopen the dongle here: every open is a fresh boot and would overwrite the wedged run's
+# record in the retention registers. Collect it afterwards without root:
+#   python3 scripts/collect-report.py
 if ! kill -0 "$NPID" 2>/dev/null; then
-    echo "--- host exited; reopening the RCP to collect the firmware's post-boot report"
-    exec 3>&- 2>/dev/null; rm -f "$FIFO"; mkfifo "$FIFO"
-    ("$OTCLI" -v --data-path "$DATA" "$URL" <"$FIFO" >>"$NODE" 2>>"${NODE_ERR}.afterboot") &
-    NPID=$!; exec 3>"$FIFO"; : >"${NODE_ERR}.afterboot"
-    sleep 14
-    grep -a 'LOCAL' "${NODE_ERR}.afterboot" | sed -E 's/^.*> ?: //' | sort -u | cut -c1-260
-    grep -a -q 'LOCAL' "${NODE_ERR}.afterboot" || echo "(no LOCAL report after reboot)"
+    echo "--- host exited; leaving the dongle untouched. Now run: python3 $(dirname "$0")/collect-report.py"
 fi
 echo "=== done after $(( $(date +%s) - START )) s: host $(kill -0 "$NPID" 2>/dev/null && echo alive || echo EXITED), stuck reports: $(grep -a -c 'LOCAL tx stuck' "$NODE_ERR")"

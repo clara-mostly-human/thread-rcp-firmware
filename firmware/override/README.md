@@ -5,3 +5,5 @@
 SDK's; `git log -p firmware/override/radio.c` is therefore exactly what we changed.
 `ot-rcp.project.mak` compiles this copy instead of the SDK's. When regenerating `firmware/` with
 slc, re-apply that makefile edit.
+
+`iostream_uart.c` — same arrangement, copy of `protocol/openthread/platform-abstraction/efr32/iostream_uart.c` (BSD-3).

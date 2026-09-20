@@ -1200,10 +1200,10 @@ $(OUTPUT_DIR)/sdk/protocol/openthread/platform-abstraction/efr32/ieee802154-pack
 CXXDEPS += $(OUTPUT_DIR)/sdk/protocol/openthread/platform-abstraction/efr32/ieee802154-packet-utils.d
 OBJS += $(OUTPUT_DIR)/sdk/protocol/openthread/platform-abstraction/efr32/ieee802154-packet-utils.o
 
-$(OUTPUT_DIR)/sdk/protocol/openthread/platform-abstraction/efr32/iostream_uart.o: $(SDK_PATH)/protocol/openthread/platform-abstraction/efr32/iostream_uart.c
-	@$(POSIX_TOOL_PATH)echo 'Building $(SDK_PATH)/protocol/openthread/platform-abstraction/efr32/iostream_uart.c'
+$(OUTPUT_DIR)/sdk/protocol/openthread/platform-abstraction/efr32/iostream_uart.o: override/iostream_uart.c
+	@$(POSIX_TOOL_PATH)echo 'Building override/iostream_uart.c'
 	@$(POSIX_TOOL_PATH)mkdir -p $(@D)
-	$(ECHO)$(CC) $(CFLAGS) -c -o $@ $(SDK_PATH)/protocol/openthread/platform-abstraction/efr32/iostream_uart.c
+	$(ECHO)$(CC) $(CFLAGS) -c -o $@ override/iostream_uart.c
 CDEPS += $(OUTPUT_DIR)/sdk/protocol/openthread/platform-abstraction/efr32/iostream_uart.d
 OBJS += $(OUTPUT_DIR)/sdk/protocol/openthread/platform-abstraction/efr32/iostream_uart.o
 
