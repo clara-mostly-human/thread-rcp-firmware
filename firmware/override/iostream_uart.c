@@ -58,6 +58,8 @@
 #define IOSTREAM_RX_BUFFER_SIZE SL_IOSTREAM_USART_VCOM_RX_BUFFER_SIZE
 #endif
 
+#include "em_device.h"
+#include "em_ldma.h"
 #include "sl_gpio.h"
 #include IOSTREAM_VCOM_CONFIG_HEADER
 #include IOSTREAM_INSTANCE_HEADER
@@ -129,6 +131,58 @@ bool efr32UartIsDataReady(void)
     return sRxDataReady || sTransmitDone;
 }
 
+// LOCAL (thread-rcp-firmware): read only when the line from the host has gone quiet.
+//
+// Every read of pending data makes the iostream driver pause its receive DMA (~34 us measured).
+// Polled from the main loop, that is a dozen pauses in the middle of every incoming frame, with no
+// flow control on this board and 22 us per byte at 460800 baud - an occasional lost byte, a Spinel
+// frame that fails its CRC, and a host that times out (measured: USART RXOF). Spinel is request /
+// response, so once a frame is in, the line is quiet: read then. The DMA's destination pointer
+// moves with every byte and can be read without disturbing anything.
+#define LOCAL_RX_QUIET_US 400    // ~18 byte times without a new byte
+#define LOCAL_RX_MAX_WAIT_US 8000 // read anyway if the host streams without a gap (ring: 2048 bytes = 44 ms)
+static bool localRxLineQuiet(void)
+{
+    static uint32_t sLastDst        = 0;
+    static uint32_t sLastMoveCycles = 0;
+    static uint32_t sFirstCycles    = 0;
+    static bool     sPending        = false;
+
+    const sl_iostream_uart_context_t *context =
+        (const sl_iostream_uart_context_t *)((sl_iostream_uart_t *)sl_iostream_uart_vcom_handle)->stream.context;
+    uint32_t dst          = LDMA->CH[context->rx_dma.channel].DST;
+    uint32_t now          = DWT->CYCCNT; // enabled in local/local_assert.c
+    uint32_t cyclesPerUs  = SystemCoreClock / 1000000UL;
+    bool     quiet        = false;
+
+    if (dst != sLastDst)
+    {
+        if (!sPending)
+        {
+            sPending     = true;
+            sFirstCycles = now;
+        }
+        sLastDst        = dst;
+        sLastMoveCycles = now;
+    }
+    else if (sPending)
+    {
+        quiet = ((now - sLastMoveCycles) >= LOCAL_RX_QUIET_US * cyclesPerUs);
+    }
+
+    if (sPending && !quiet && ((now - sFirstCycles) >= LOCAL_RX_MAX_WAIT_US * cyclesPerUs))
+    {
+        quiet = true;
+    }
+
+    if (quiet)
+    {
+        sPending = false;
+    }
+
+    return quiet;
+}
+
 static void processReceive(void)
 {
     sl_status_t status;
@@ -140,6 +194,7 @@ static void processReceive(void)
 #endif
 
     otEXPECT(sRxDataReady);
+    otEXPECT(localRxLineQuiet()); // LOCAL
 
     memset(sReceiveBuffer, 0, IOSTREAM_RX_BUFFER_SIZE);
 
