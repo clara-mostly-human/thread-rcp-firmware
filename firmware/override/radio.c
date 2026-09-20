@@ -352,6 +352,9 @@ static uint32_t      sLocalTxRequests      = 0;
 static uint32_t      sLocalTxDones         = 0;
 static uint32_t      sLocalTxStuckCount    = 0;
 static void          localReportStuckTx(void);
+extern void          localCrumbTxRequest(void); // local/local_assert.c
+extern void          localCrumbTxDone(void);
+extern void          localCrumbStuck(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 // ---- end LOCAL ------------------------------------------------------------------------------------
 
 
@@ -1878,6 +1881,7 @@ otError otPlatRadioTransmit(otInstance *aInstance, otRadioFrame *aFrame)
         sLocalTxStuckReported = false;
         sLocalTxAwaitingDone  = true;
         sLocalTxRequests++;
+        localCrumbTxRequest();
 
         CORE_DECLARE_IRQ_STATE;
         CORE_ENTER_ATOMIC();
@@ -3586,6 +3590,7 @@ static void processTxComplete(otInstance *aInstance)
         // LOCAL: the stack has been told; disarm the watchdog
         sLocalTxAwaitingDone = false;
         sLocalTxDones++;
+        localCrumbTxDone();
 
 #if RADIO_CONFIG_DEBUG_COUNTERS_SUPPORT
         railDebugCounters.mRailPlatRadioTxDoneCbCount++;
@@ -3672,6 +3677,14 @@ void efr32RadioProcess(otInstance *aInstance)
 static void localReportStuckTx(void)
 {
     uint32_t flags = miscRadioState;
+
+#if RADIO_CONFIG_DEBUG_COUNTERS_SUPPORT
+    localCrumbStuck(flags, (uint32_t)sl_rail_get_radio_state(gRailHandle), railDebugCounters.mRailPlatTxTriggered,
+                    railDebugCounters.mRailTxStarted, railDebugCounters.mRailTxStartFailed,
+                    railDebugCounters.mRailEventPacketSent, railDebugCounters.mRailPlatRadioTxDoneCbCount);
+#else
+    localCrumbStuck(flags, (uint32_t)sl_rail_get_radio_state(gRailHandle), 0, 0, 0, 0, 0);
+#endif
 
     otLogCritPlat("LOCAL tx stuck #%lu: no TxDone %lu ms after request (requests %lu, dones %lu)",
                   (unsigned long)sLocalTxStuckCount, (unsigned long)(otPlatAlarmMilliGetNow() - sLocalTxRequestedAtMs),

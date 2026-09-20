@@ -1221,6 +1221,14 @@ $(OUTPUT_DIR)/sdk/protocol/openthread/platform-abstraction/efr32/misc.o: $(SDK_P
 CDEPS += $(OUTPUT_DIR)/sdk/protocol/openthread/platform-abstraction/efr32/misc.d
 OBJS += $(OUTPUT_DIR)/sdk/protocol/openthread/platform-abstraction/efr32/misc.o
 
+# LOCAL: emlib watchdog driver (not part of the generated project)
+$(OUTPUT_DIR)/sdk/platform/emlib/src/em_wdog.o: $(SDK_PATH)/platform/emlib/src/em_wdog.c
+	@$(POSIX_TOOL_PATH)echo 'Building $(SDK_PATH)/platform/emlib/src/em_wdog.c'
+	@$(POSIX_TOOL_PATH)mkdir -p $(@D)
+	$(ECHO)$(CC) $(CFLAGS) -c -o $@ $(SDK_PATH)/platform/emlib/src/em_wdog.c
+CDEPS += $(OUTPUT_DIR)/sdk/platform/emlib/src/em_wdog.d
+OBJS += $(OUTPUT_DIR)/sdk/platform/emlib/src/em_wdog.o
+
 # LOCAL: assert recorder
 $(OUTPUT_DIR)/project/local/local_assert.o: local/local_assert.c
 	@$(POSIX_TOOL_PATH)echo 'Building local/local_assert.c'
