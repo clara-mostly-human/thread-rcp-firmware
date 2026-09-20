@@ -7,3 +7,5 @@ SDK's; `git log -p firmware/override/radio.c` is therefore exactly what we chang
 slc, re-apply that makefile edit.
 
 `iostream_uart.c` — same arrangement, copy of `protocol/openthread/platform-abstraction/efr32/iostream_uart.c` (BSD-3).
+
+`sl_iostream_uart.c` — copy of `platform/service/iostream/src/sl_iostream_uart.c` (Zlib, Silicon Labs).

@@ -1026,10 +1026,10 @@ $(OUTPUT_DIR)/sdk/platform/service/iostream/src/sl_iostream.o: $(SDK_PATH)/platf
 CDEPS += $(OUTPUT_DIR)/sdk/platform/service/iostream/src/sl_iostream.d
 OBJS += $(OUTPUT_DIR)/sdk/platform/service/iostream/src/sl_iostream.o
 
-$(OUTPUT_DIR)/sdk/platform/service/iostream/src/sl_iostream_uart.o: $(SDK_PATH)/platform/service/iostream/src/sl_iostream_uart.c
-	@$(POSIX_TOOL_PATH)echo 'Building $(SDK_PATH)/platform/service/iostream/src/sl_iostream_uart.c'
+$(OUTPUT_DIR)/sdk/platform/service/iostream/src/sl_iostream_uart.o: override/sl_iostream_uart.c
+	@$(POSIX_TOOL_PATH)echo 'Building override/sl_iostream_uart.c'
 	@$(POSIX_TOOL_PATH)mkdir -p $(@D)
-	$(ECHO)$(CC) $(CFLAGS) -c -o $@ $(SDK_PATH)/platform/service/iostream/src/sl_iostream_uart.c
+	$(ECHO)$(CC) $(CFLAGS) -c -o $@ override/sl_iostream_uart.c
 CDEPS += $(OUTPUT_DIR)/sdk/platform/service/iostream/src/sl_iostream_uart.d
 OBJS += $(OUTPUT_DIR)/sdk/platform/service/iostream/src/sl_iostream_uart.o
 
