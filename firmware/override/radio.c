@@ -354,7 +354,8 @@ static uint32_t      sLocalTxStuckCount    = 0;
 static void          localReportStuckTx(void);
 extern void          localCrumbTxRequest(void); // local/local_assert.c
 extern void          localCrumbTxDone(void);
-extern void          localCrumbStuck(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
+extern void          localCrumbStuck(uint32_t);
+extern void          localCrumbRadioRx(void);
 // ---- end LOCAL ------------------------------------------------------------------------------------
 
 
@@ -3501,6 +3502,7 @@ static void processNextRxPacket(otInstance *aInstance)
         }
     } while (sReceive.iid == RADIO_BCAST_IID && interfaceId < RADIO_INTERFACE_COUNT);
 
+    localCrumbRadioRx(); // LOCAL
 #if RADIO_CONFIG_DEBUG_COUNTERS_SUPPORT
     railDebugCounters.mRailPlatRadioReceiveDoneCbCount++;
 #endif
@@ -3678,13 +3680,7 @@ static void localReportStuckTx(void)
 {
     uint32_t flags = miscRadioState;
 
-#if RADIO_CONFIG_DEBUG_COUNTERS_SUPPORT
-    localCrumbStuck(flags, (uint32_t)sl_rail_get_radio_state(gRailHandle), railDebugCounters.mRailPlatTxTriggered,
-                    railDebugCounters.mRailTxStarted, railDebugCounters.mRailTxStartFailed,
-                    railDebugCounters.mRailEventPacketSent, railDebugCounters.mRailPlatRadioTxDoneCbCount);
-#else
-    localCrumbStuck(flags, (uint32_t)sl_rail_get_radio_state(gRailHandle), 0, 0, 0, 0, 0);
-#endif
+    localCrumbStuck(flags);
 
     otLogCritPlat("LOCAL tx stuck #%lu: no TxDone %lu ms after request (requests %lu, dones %lu)",
                   (unsigned long)sLocalTxStuckCount, (unsigned long)(otPlatAlarmMilliGetNow() - sLocalTxRequestedAtMs),

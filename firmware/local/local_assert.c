@@ -126,13 +126,18 @@ typedef struct
     uint32_t txDone;     // completions handed to the stack
     uint32_t lastTxReqMs;
     uint32_t lastTxDoneMs;
-    uint32_t stuck; // times the stuck-transmit check fired
-    uint32_t stuckFlags;
-    uint32_t stuckRailState;
-    uint32_t stuckTriggered, stuckStarted, stuckStartFailed, stuckSent, stuckDoneCb;
-} local_crumbs_t;
+    uint32_t stuck;      // times the stuck-transmit check fired
+    uint32_t stuckFlags; // radio.c internal flags at that moment
+    uint32_t uartRxBytes; // bytes read from the host
+    uint32_t uartRxLastMs;
+    uint32_t uartTxCalls; // otPlatUartSend() calls (chunks handed to the UART)
+    uint32_t uartTxDones; // send-done callbacks given back to the NCP layer
+    uint32_t uartTxLastMs;
+    uint32_t radioRx; // received frames handed to the stack
+    uint32_t radioRxLastMs;
+} local_crumbs_t; // 16 words: RET[8..23]
 
-#define sCrumbs (*(local_crumbs_t *)LOCAL_BURAM_WORD(8)) // 15 words: RET[8..22]
+#define sCrumbs (*(local_crumbs_t *)LOCAL_BURAM_WORD(8)) // 16 words: RET[8..23]
 static local_crumbs_t sCrumbsBoot;
 static uint8_t        sCrumbReportsLeft = 0;
 
@@ -150,18 +155,31 @@ void localCrumbTxDone(void)
     sCrumbs.lastTxDoneMs = otPlatAlarmMilliGetNow();
 }
 
-void localCrumbStuck(uint32_t aFlags, uint32_t aRailState, uint32_t aTriggered, uint32_t aStarted,
-                     uint32_t aStartFailed, uint32_t aSent, uint32_t aDoneCb)
+void localCrumbStuck(uint32_t aFlags)
 {
     CMU_ClockEnable(cmuClock_BURAM, true);
     sCrumbs.stuck++;
-    sCrumbs.stuckFlags       = aFlags;
-    sCrumbs.stuckRailState   = aRailState;
-    sCrumbs.stuckTriggered   = aTriggered;
-    sCrumbs.stuckStarted     = aStarted;
-    sCrumbs.stuckStartFailed = aStartFailed;
-    sCrumbs.stuckSent        = aSent;
-    sCrumbs.stuckDoneCb      = aDoneCb;
+    sCrumbs.stuckFlags = aFlags;
+}
+
+void localCrumbUartRx(uint32_t aBytes)
+{
+    sCrumbs.uartRxBytes += aBytes;
+    sCrumbs.uartRxLastMs = otPlatAlarmMilliGetNow();
+}
+
+void localCrumbUartTx(void)
+{
+    sCrumbs.uartTxCalls++;
+    sCrumbs.uartTxLastMs = otPlatAlarmMilliGetNow();
+}
+
+void localCrumbUartTxDone(void) { sCrumbs.uartTxDones++; }
+
+void localCrumbRadioRx(void)
+{
+    sCrumbs.radioRx++;
+    sCrumbs.radioRxLastMs = otPlatAlarmMilliGetNow();
 }
 
 // ---- hardware watchdog: a main loop that stops for 2 s becomes a reset with cause "watchdog"
@@ -253,11 +271,11 @@ void localAssertProcess(void)
         otLogCritPlat("LOCAL previous run: loops %lu lastLoop %lu ms | txReq %lu (last %lu ms) txDone %lu (last %lu ms)",
                       (unsigned long)c->loops, (unsigned long)c->lastLoopMs, (unsigned long)c->txReq,
                       (unsigned long)c->lastTxReqMs, (unsigned long)c->txDone, (unsigned long)c->lastTxDoneMs);
-        otLogCritPlat("LOCAL previous run: stuck %lu flags 0x%08lx rail 0x%lx | triggered %lu started %lu startFailed %lu "
-                      "sent %lu doneCb %lu",
-                      (unsigned long)c->stuck, (unsigned long)c->stuckFlags, (unsigned long)c->stuckRailState,
-                      (unsigned long)c->stuckTriggered, (unsigned long)c->stuckStarted,
-                      (unsigned long)c->stuckStartFailed, (unsigned long)c->stuckSent, (unsigned long)c->stuckDoneCb);
+        otLogCritPlat("LOCAL previous run: stuck %lu flags 0x%08lx | radioRx %lu (last %lu ms)", (unsigned long)c->stuck,
+                      (unsigned long)c->stuckFlags, (unsigned long)c->radioRx, (unsigned long)c->radioRxLastMs);
+        otLogCritPlat("LOCAL previous run: uart rx %lu bytes (last %lu ms) | tx calls %lu dones %lu (last %lu ms)",
+                      (unsigned long)c->uartRxBytes, (unsigned long)c->uartRxLastMs, (unsigned long)c->uartTxCalls,
+                      (unsigned long)c->uartTxDones, (unsigned long)c->uartTxLastMs);
         sCrumbReportsLeft--;
         if (sReportsLeft == 0)
         {

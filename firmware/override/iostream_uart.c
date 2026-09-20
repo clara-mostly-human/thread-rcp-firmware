@@ -81,6 +81,11 @@
 #endif
 
 static uint8_t       sReceiveBuffer[IOSTREAM_RX_BUFFER_SIZE];
+// LOCAL: breadcrumbs (local/local_assert.c)
+extern void localCrumbUartRx(uint32_t aBytes);
+extern void localCrumbUartTx(void);
+extern void localCrumbUartTxDone(void);
+
 static volatile bool sTransmitDone = false;
 static volatile bool sRxDataReady  = false;
 
@@ -149,6 +154,7 @@ static void processReceive(void)
 
     if (status == SL_STATUS_OK)
     {
+        localCrumbUartRx((uint32_t)bytes_read); // LOCAL
         otPlatUartReceived(sReceiveBuffer, bytes_read);
     }
 
@@ -183,6 +189,7 @@ otError otPlatUartFlush(void)
 
     sTransmitDone = false;
 
+    localCrumbUartTxDone(); // LOCAL
     otPlatUartSendDone();
     otSysEventSignalPending();
 exit:
@@ -217,6 +224,7 @@ otError otPlatUartSend(const uint8_t *aBuf, uint16_t aBufLength)
         (void)otPlatUartFlush();
     }
 
+    localCrumbUartTx(); // LOCAL
     status = sl_iostream_write(sl_iostream_vcom_handle, aBuf, aBufLength);
     if (status == SL_STATUS_OK)
     {
