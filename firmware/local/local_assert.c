@@ -141,6 +141,8 @@ typedef struct
 static local_crumbs_t sCrumbsBoot;
 static uint8_t        sCrumbReportsLeft = 0;
 static uint32_t       sUartErrorsBoot   = 0;
+static uint32_t       sUartPauseBoot    = 0;
+volatile uint32_t     localUartPauseMaxCycles = 0; // longest paused-reception window, CPU cycles (RET[7])
 
 void localCrumbTxRequest(void)
 {
@@ -223,6 +225,11 @@ void localAssertProcess(void)
             sCrumbReportsLeft = 6;
         }
         sUartErrorsBoot = BURAM->RET[31].REG;
+        sUartPauseBoot  = BURAM->RET[7].REG;
+        BURAM->RET[7].REG = 0;
+        CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+        DWT->CYCCNT = 0;
+        DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
         BURAM->RET[31].REG = 0;
         memset(&sCrumbs, 0, sizeof(sCrumbs));
         sCrumbs.magic = LOCAL_CRUMBS_MAGIC;
@@ -251,6 +258,10 @@ void localAssertProcess(void)
     CMU_ClockEnable(cmuClock_BURAM, true);
     sCrumbs.loops++;
     sCrumbs.lastLoopMs = otPlatAlarmMilliGetNow();
+    if (BURAM->RET[7].REG != localUartPauseMaxCycles)
+    {
+        BURAM->RET[7].REG = localUartPauseMaxCycles;
+    }
 
     // Hardware evidence of lost bytes from the host: the USART's receive-overflow (a byte arrived
     // while the previous one had not been taken) and framing-error flags. RET[31]: overflows in the
@@ -293,8 +304,9 @@ void localAssertProcess(void)
                       (unsigned long)c->lastTxReqMs, (unsigned long)c->txDone, (unsigned long)c->lastTxDoneMs);
         otLogCritPlat("LOCAL previous run: stuck %lu flags 0x%08lx | radioRx %lu (last %lu ms)", (unsigned long)c->stuck,
                       (unsigned long)c->stuckFlags, (unsigned long)c->radioRx, (unsigned long)c->radioRxLastMs);
-        otLogCritPlat("LOCAL previous run: USART receive overflows %lu, framing errors %lu",
-                      (unsigned long)(sUartErrorsBoot & 0xffff), (unsigned long)(sUartErrorsBoot >> 16));
+        otLogCritPlat("LOCAL previous run: USART receive overflows %lu, framing errors %lu | longest RX pause %lu us",
+                      (unsigned long)(sUartErrorsBoot & 0xffff), (unsigned long)(sUartErrorsBoot >> 16),
+                      (unsigned long)(sUartPauseBoot / (SystemCoreClock / 1000000UL)));
         otLogCritPlat("LOCAL previous run: uart rx %lu bytes (last %lu ms) | tx calls %lu dones %lu (last %lu ms)",
                       (unsigned long)c->uartRxBytes, (unsigned long)c->uartRxLastMs, (unsigned long)c->uartTxCalls,
                       (unsigned long)c->uartTxDones, (unsigned long)c->uartTxLastMs);

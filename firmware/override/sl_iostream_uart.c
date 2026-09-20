@@ -1149,6 +1149,17 @@ static void update_ring_buffer(sl_iostream_uart_context_t * uart_context, size_t
   uint32_t set_flags;
   #endif
 
+  // LOCAL (thread-rcp-firmware): reception is paused from here to the resume at the end of this
+  // function. Without flow control the host keeps sending meanwhile, and the USART holds only a
+  // couple of bytes (22 us each at 460800 baud). An interrupt taken inside this window - the radio's
+  // can run for hundreds of microseconds - stretches the pause until a byte is overwritten: one
+  // lost byte, one corrupted Spinel frame, and the host times out ("radio tx timeout" / "Wait for
+  // response timeout"). Measured on the Dongle-PMG24: USART RXOF = 1 in the run that failed.
+  // Keep the window as short as the code itself by taking it with interrupts off.
+  CORE_DECLARE_IRQ_STATE;
+  CORE_ENTER_CRITICAL();
+  uint32_t local_pause_start = DWT->CYCCNT; // LOCAL: time the window (local/local_assert.c reports the maximum)
+
   // Pause the DMA to update its registers
   ecode = DMADRV_PauseTransfer(uart_context->rx_dma.channel);
   EFM_ASSERT(ecode == ECODE_OK);
@@ -1269,6 +1280,15 @@ static void update_ring_buffer(sl_iostream_uart_context_t * uart_context, size_t
   // Resume DMA after update
   ecode = DMADRV_ResumeTransfer(uart_context->rx_dma.channel);
   EFM_ASSERT(ecode == ECODE_OK);
+
+  {
+    extern volatile uint32_t localUartPauseMaxCycles;
+    uint32_t cycles = DWT->CYCCNT - local_pause_start;
+    if (cycles > localUartPauseMaxCycles) {
+      localUartPauseMaxCycles = cycles;
+    }
+  }
+  CORE_EXIT_CRITICAL(); // LOCAL: end of the paused-reception window
 }
 
 /***************************************************************************//**
