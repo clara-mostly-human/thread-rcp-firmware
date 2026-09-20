@@ -9,6 +9,14 @@ import os, sys, time, re, termios, fcntl, struct, select
 DEV = '/dev/cu.usbserial-1120'
 IOSSIOSPEED = 0x80085402; TIOCMBIS = 0x8004746c; TIOCMBIC = 0x8004746b; DTR = 0x002; RTS = 0x004
 
+import subprocess
+# Collecting pin-resets the chip. Never do that under a running host (it cost a soak run once).
+holders = subprocess.run(['lsof', DEV], capture_output=True, text=True).stdout.strip().splitlines()[1:]
+if holders and '--force' not in sys.argv:
+    sys.exit('refusing: %s is open by another process (a test is probably running):\n  %s\n'
+             'wait for it to finish, or pass --force' % (DEV, '\n  '.join(h[:100] for h in holders)))
+sys.argv = [a for a in sys.argv if a != '--force']
+
 def open_port(baud):
     fd = os.open(DEV, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
     a = termios.tcgetattr(fd); a[0] = 0; a[1] = 0; a[3] = 0; a[2] = termios.CS8 | termios.CREAD | termios.CLOCAL
