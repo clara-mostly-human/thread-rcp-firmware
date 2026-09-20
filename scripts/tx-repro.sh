@@ -81,7 +81,7 @@ if ! kill -0 "$NPID" 2>/dev/null; then
     exec 3>&- 2>/dev/null; rm -f "$FIFO"; mkfifo "$FIFO"
     ("$OTCLI" -v --data-path "$DATA" "$URL" <"$FIFO" >>"$NODE" 2>>"${NODE_ERR}.afterboot") &
     NPID=$!; exec 3>"$FIFO"; : >"${NODE_ERR}.afterboot"
-    sleep 9
+    sleep 14
     grep -a 'LOCAL' "${NODE_ERR}.afterboot" | sed -E 's/^.*> ?: //' | sort -u | cut -c1-260
     grep -a -q 'LOCAL' "${NODE_ERR}.afterboot" || echo "(no LOCAL report after reboot)"
 fi
