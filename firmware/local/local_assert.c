@@ -140,6 +140,7 @@ typedef struct
 #define sCrumbs (*(local_crumbs_t *)LOCAL_BURAM_WORD(8)) // 16 words: RET[8..23]
 static local_crumbs_t sCrumbsBoot;
 static uint8_t        sCrumbReportsLeft = 0;
+static uint32_t       sUartErrorsBoot   = 0;
 
 void localCrumbTxRequest(void)
 {
@@ -221,6 +222,8 @@ void localAssertProcess(void)
             sCrumbsBoot       = sCrumbs;
             sCrumbReportsLeft = 6;
         }
+        sUartErrorsBoot = BURAM->RET[31].REG;
+        BURAM->RET[31].REG = 0;
         memset(&sCrumbs, 0, sizeof(sCrumbs));
         sCrumbs.magic = LOCAL_CRUMBS_MAGIC;
         if (sReportsLeft == 0)
@@ -249,6 +252,23 @@ void localAssertProcess(void)
     sCrumbs.loops++;
     sCrumbs.lastLoopMs = otPlatAlarmMilliGetNow();
 
+    // Hardware evidence of lost bytes from the host: the USART's receive-overflow (a byte arrived
+    // while the previous one had not been taken) and framing-error flags. RET[31]: overflows in the
+    // low half, framing errors in the high half.
+    {
+        uint32_t flags = USART0->IF & (USART_IF_RXOF | USART_IF_FERR);
+
+        if (flags != 0)
+        {
+            uint32_t word = BURAM->RET[31].REG;
+            uint32_t rxof = (word & 0xffff) + ((flags & USART_IF_RXOF) ? 1 : 0);
+            uint32_t ferr = (word >> 16) + ((flags & USART_IF_FERR) ? 1 : 0);
+
+            BURAM->RET[31].REG = (ferr << 16) | (rxof & 0xffff);
+            USART0->IF_CLR     = flags;
+        }
+    }
+
     {
         static uint8_t sBootLines = 6; // proves the log path, and whether .noinit survived the reset
         static uint32_t sBootLineMs = 1000;
@@ -273,6 +293,8 @@ void localAssertProcess(void)
                       (unsigned long)c->lastTxReqMs, (unsigned long)c->txDone, (unsigned long)c->lastTxDoneMs);
         otLogCritPlat("LOCAL previous run: stuck %lu flags 0x%08lx | radioRx %lu (last %lu ms)", (unsigned long)c->stuck,
                       (unsigned long)c->stuckFlags, (unsigned long)c->radioRx, (unsigned long)c->radioRxLastMs);
+        otLogCritPlat("LOCAL previous run: USART receive overflows %lu, framing errors %lu",
+                      (unsigned long)(sUartErrorsBoot & 0xffff), (unsigned long)(sUartErrorsBoot >> 16));
         otLogCritPlat("LOCAL previous run: uart rx %lu bytes (last %lu ms) | tx calls %lu dones %lu (last %lu ms)",
                       (unsigned long)c->uartRxBytes, (unsigned long)c->uartRxLastMs, (unsigned long)c->uartTxCalls,
                       (unsigned long)c->uartTxDones, (unsigned long)c->uartTxLastMs);
@@ -292,11 +314,3 @@ void localAssertProcess(void)
     }
 }
 
-// ---- never sleep ---------------------------------------------------------------------------------
-// The post-mortem counters showed one direction of the UART dying (bytes from the host stop
-// arriving) while the main loop, the radio and the UART transmit side carry on. The iostream USART
-// driver re-points its receive DMA at a dummy byte before every sleep and relinks it on every wake
-// (sl_iostream_uart_prepare_for_sleep / _wakeup); the MCU naps between all events, so that handoff
-// runs thousands of times a minute, with no flow control to hold the host off meanwhile. A
-// USB-powered RCP gains nothing from sleeping. The platform layer asks this weak hook first.
-bool efr32AllowSleepCallback(void) { return false; }

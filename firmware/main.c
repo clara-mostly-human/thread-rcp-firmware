@@ -62,10 +62,13 @@ int main(void)
     // User provided code. Application process.
     app_process_action();
 
-#if defined(SL_CATALOG_POWER_MANAGER_PRESENT)
+#if defined(SL_CATALOG_POWER_MANAGER_PRESENT) && !defined(LOCAL_NEVER_SLEEP)
     // Let the CPU go to sleep if the system allows it.
     sl_power_manager_sleep();
 #endif
+    // LOCAL_NEVER_SLEEP (set in ot-rcp.project.mak): this board is USB powered, and every sleep runs
+    // the iostream USART driver's receive-DMA handoff (prepare_for_sleep / wakeup) with no flow
+    // control to hold the host off meanwhile. See firmware/local/local_assert.c.
   }
 #endif // SL_CATALOG_KERNEL_PRESENT
 }
