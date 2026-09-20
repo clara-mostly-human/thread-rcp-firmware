@@ -291,3 +291,12 @@ void localAssertProcess(void)
         sNextReportMs = otPlatAlarmMilliGetNow() + 5000;
     }
 }
+
+// ---- never sleep ---------------------------------------------------------------------------------
+// The post-mortem counters showed one direction of the UART dying (bytes from the host stop
+// arriving) while the main loop, the radio and the UART transmit side carry on. The iostream USART
+// driver re-points its receive DMA at a dummy byte before every sleep and relinks it on every wake
+// (sl_iostream_uart_prepare_for_sleep / _wakeup); the MCU naps between all events, so that handoff
+// runs thousands of times a minute, with no flow control to hold the host off meanwhile. A
+// USB-powered RCP gains nothing from sleeping. The platform layer asks this weak hook first.
+bool efr32AllowSleepCallback(void) { return false; }
