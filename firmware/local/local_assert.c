@@ -21,15 +21,20 @@
 
 #define LOCAL_ASSERT_MAGIC 0xA55E7F41UL
 
+// Both records live in the backup-domain retention registers (BURAM->RET[], 32 x 32 bit). Tested
+// on this board: .noinit RAM does NOT survive a pin reset (the Gecko bootloader runs first), BURAM
+// does. RET[0..7] are left alone for the SDK/bootloader. Whole-word access only.
+#define LOCAL_BURAM_WORD(n) ((void *)&BURAM->RET[(n)])
+
 typedef struct
 {
     uint32_t magic;
     uint32_t line;
-    uint32_t count; // asserts since power-up
-    char     file[64];
+    uint32_t count; // halts since power-up
+    char     file[16];
 } local_assert_record_t;
 
-static local_assert_record_t sRecord __attribute__((section(".noinit")));
+#define sRecord (*(local_assert_record_t *)LOCAL_BURAM_WORD(24)) // 7 words: RET[24..30]
 static local_assert_record_t sBootCopy; // what we found at boot, for reporting
 static uint8_t               sReportsLeft = 0;
 static uint32_t              sNextReportMs;
@@ -41,12 +46,24 @@ static void localRecordAndReset(const char *aWhat, uint32_t aLine)
     size_t keep   = sizeof(sRecord.file) - 1;
 
     __disable_irq();
+    CMU_ClockEnable(cmuClock_BURAM, true);
     sRecord.count = (sRecord.magic == LOCAL_ASSERT_MAGIC) ? sRecord.count + 1 : 1;
     sRecord.magic = LOCAL_ASSERT_MAGIC;
     sRecord.line  = aLine;
-    // The end of a path is the informative part.
-    strncpy(sRecord.file, (length > keep) ? aWhat + (length - keep) : aWhat, keep);
-    sRecord.file[keep] = '\0';
+    // The end of a path is the informative part. The retention registers take whole-word writes
+    // only, so assemble the text in RAM first.
+    {
+        char     text[sizeof(sRecord.file)];
+        uint32_t word;
+
+        memset(text, 0, sizeof(text));
+        strncpy(text, (length > keep) ? aWhat + (length - keep) : aWhat, keep);
+        for (size_t i = 0; i < sizeof(text); i += 4)
+        {
+            memcpy(&word, text + i, 4);
+            *(volatile uint32_t *)((uintptr_t)sRecord.file + i) = word;
+        }
+    }
     NVIC_SystemReset();
     while (1) {}
 }
@@ -115,18 +132,20 @@ typedef struct
     uint32_t stuckTriggered, stuckStarted, stuckStartFailed, stuckSent, stuckDoneCb;
 } local_crumbs_t;
 
-static local_crumbs_t sCrumbs __attribute__((section(".noinit")));
+#define sCrumbs (*(local_crumbs_t *)LOCAL_BURAM_WORD(8)) // 15 words: RET[8..22]
 static local_crumbs_t sCrumbsBoot;
 static uint8_t        sCrumbReportsLeft = 0;
 
 void localCrumbTxRequest(void)
 {
+    CMU_ClockEnable(cmuClock_BURAM, true);
     sCrumbs.txReq++;
     sCrumbs.lastTxReqMs = otPlatAlarmMilliGetNow();
 }
 
 void localCrumbTxDone(void)
 {
+    CMU_ClockEnable(cmuClock_BURAM, true);
     sCrumbs.txDone++;
     sCrumbs.lastTxDoneMs = otPlatAlarmMilliGetNow();
 }
@@ -134,6 +153,7 @@ void localCrumbTxDone(void)
 void localCrumbStuck(uint32_t aFlags, uint32_t aRailState, uint32_t aTriggered, uint32_t aStarted,
                      uint32_t aStartFailed, uint32_t aSent, uint32_t aDoneCb)
 {
+    CMU_ClockEnable(cmuClock_BURAM, true);
     sCrumbs.stuck++;
     sCrumbs.stuckFlags       = aFlags;
     sCrumbs.stuckRailState   = aRailState;
@@ -153,6 +173,8 @@ static void                         localWake(sl_sleeptimer_timer_handle_t *aHan
     (void)aHandle;
     (void)aData;
 }
+
+static void localRetentionInit(void) { CMU_ClockEnable(cmuClock_BURAM, true); }
 
 static void localWatchdogStart(void)
 {
@@ -175,10 +197,11 @@ void localAssertProcess(void)
     if (!sInitialised)
     {
         sInitialised = 1;
+        localRetentionInit();
         if (sCrumbs.magic == LOCAL_CRUMBS_MAGIC)
         {
             sCrumbsBoot       = sCrumbs;
-            sCrumbReportsLeft = 2;
+            sCrumbReportsLeft = 6;
         }
         memset(&sCrumbs, 0, sizeof(sCrumbs));
         sCrumbs.magic = LOCAL_CRUMBS_MAGIC;
@@ -186,12 +209,15 @@ void localAssertProcess(void)
         {
             sNextReportMs = otPlatAlarmMilliGetNow() + 1000;
         }
-        localWatchdogStart();
+        // Watchdog deliberately NOT started while diagnosing: its reset would be followed by the
+        // host's own reset, and the report would then describe the idle run in between instead of
+        // the wedged one. Halted vs alive-but-cut-off is read from lastLoop - lastTxReq instead.
+        (void)localWatchdogStart;
         if (sRecord.magic == LOCAL_ASSERT_MAGIC)
         {
             sBootCopy     = sRecord;
             sRecord.magic = 0; // keep .count for the next one
-            sReportsLeft  = 2;
+            sReportsLeft  = 6;
             sNextReportMs = otPlatAlarmMilliGetNow() + 1000;
         }
         else
@@ -200,9 +226,25 @@ void localAssertProcess(void)
         }
     }
 
-    WDOGn_Feed(WDOG0);
+    // Writes to a clock-gated peripheral are silently dropped; cheap insurance.
+    CMU_ClockEnable(cmuClock_BURAM, true);
     sCrumbs.loops++;
     sCrumbs.lastLoopMs = otPlatAlarmMilliGetNow();
+
+    {
+        static uint8_t sBootLines = 6; // proves the log path, and whether .noinit survived the reset
+        static uint32_t sBootLineMs = 1000;
+
+        if (sBootLines > 0 && otPlatAlarmMilliGetNow() >= sBootLineMs)
+        {
+            otLogCritPlat("LOCAL boot: crumbs from previous run %s, halt record %s, uptime %lu ms",
+                          (sCrumbsBoot.magic == LOCAL_CRUMBS_MAGIC) ? "PRESENT" : "absent",
+                          (sBootCopy.magic == LOCAL_ASSERT_MAGIC) ? "PRESENT" : "absent",
+                          (unsigned long)otPlatAlarmMilliGetNow());
+            sBootLines--;
+            sBootLineMs += 5000;
+        }
+    }
 
     if (sCrumbReportsLeft > 0 && (int32_t)(otPlatAlarmMilliGetNow() - sNextReportMs) >= 0)
     {
