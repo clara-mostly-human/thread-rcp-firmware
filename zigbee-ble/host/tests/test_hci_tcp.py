@@ -61,13 +61,15 @@ async def test_tcp_host_reaches_the_controller_and_back():
         complete = bytes.fromhex("040e0401030c00")
         ep.to_host.put_nowait(complete)
         assert await asyncio.wait_for(reader.readexactly(len(complete)), 2) == complete
-        # a second host is refused while one is connected
+        # a new host replaces the old one: the old connection is closed, the new one gets data
         r2, w2 = await asyncio.open_connection("127.0.0.1", port)
-        assert await asyncio.wait_for(r2.read(), 2) == b""
-        w2.close()
+        assert await asyncio.wait_for(reader.read(), 2) == b""
+        ep.to_host.put_nowait(complete)
+        assert await asyncio.wait_for(r2.readexactly(len(complete)), 2) == complete
         # a chip reboot (detach) drops the host
         await srv.detach()
-        assert await asyncio.wait_for(reader.read(), 2) == b""
+        assert await asyncio.wait_for(r2.read(), 2) == b""
+        w2.close()
     finally:
         writer.close()
         ep.to_host.put_nowait(None)

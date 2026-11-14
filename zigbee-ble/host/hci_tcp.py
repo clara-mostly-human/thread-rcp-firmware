@@ -2,7 +2,7 @@
 
 The macOS counterpart of Silicon Labs' cpc-hci-bridge on Linux: CPC endpoint 14 carries one H4
 packet per frame, and any Bluetooth host stack that speaks H4 over a socket (NimBLE's
-BLE_SOCK_TYPE linux_tcp, Bumble's tcp-client transport, ...) connects here. One host at a time.
+BLE_SOCK_TYPE linux_tcp, Bumble's tcp-client transport, ...) connects here. One host at a time; a new connection replaces the previous one.
 
 Host-to-controller bytes arrive as a TCP stream, so they are split back into whole H4 packets
 before each goes out as one CPC frame. Controller-to-host frames are passed through as they are.
@@ -102,10 +102,11 @@ class HciTcpServer:
 
     async def _serve(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         peer = writer.get_extra_info("peername")
-        if self._client is not None:
-            _LOG.warning("refusing %s: a host stack is already connected", peer)
-            writer.close()
-            return
+        if self._client is not None and not self._client.is_closing():
+            # The newest host stack wins: a new connection means the previous host restarted or
+            # its connection went stale (and a readiness probe must not lock the real host out).
+            _LOG.warning("host stack %s replaces the previous connection", peer)
+            self._client.close()
         self._client = writer
         _LOG.info("host stack connected from %s", peer)
         split = H4Splitter()
