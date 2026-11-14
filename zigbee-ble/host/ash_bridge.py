@@ -422,7 +422,11 @@ class Bridge:
 
 async def _main(args: argparse.Namespace) -> None:
     proxy = scanner = None
-    if not args.no_bluetooth:
+    if args.hci_tcp:
+        # Raw HCI for an external host stack instead of the built-in Bumble proxy.
+        import hci_tcp
+        scanner = hci_tcp.HciTcpServer(args.host, args.hci_tcp)
+    elif not args.no_bluetooth:
         import ble_proxy
         scanner = ble_proxy.BleScanner(lambda adv: None, interval_ms=args.scan_interval,
                                        window_ms=args.scan_window)
@@ -461,6 +465,8 @@ if __name__ == "__main__":
     ap.add_argument("--esphome-port", type=int, default=6053,
                     help="ESPHome API port of the Bluetooth proxy")
     ap.add_argument("--no-bluetooth", action="store_true", help="Zigbee only")
+    ap.add_argument("--hci-tcp", type=int, default=0, metavar="PORT",
+                    help="serve the chip's raw HCI (H4) on this TCP port instead of the Bumble proxy")
     ap.add_argument("--scan-interval", type=float, default=150, help="ms")
     ap.add_argument("--scan-window", type=float, default=30, help="ms")
     ap.add_argument("--stats-interval", type=int, default=300, help="seconds between statistics lines")
