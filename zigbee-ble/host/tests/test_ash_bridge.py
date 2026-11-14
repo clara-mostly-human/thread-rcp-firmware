@@ -209,3 +209,43 @@ async def test_close_while_a_host_is_connected():
         async with asyncio.timeout(5):
             await bridge.close()                         # must not wait for ZHA to leave
         await ezsp.disconnect()
+
+
+class FailingBle:
+    def __init__(self):
+        self.attaches = 0
+        self.detaches = 0
+
+    async def attach(self, ep):
+        self.attaches += 1
+        raise RuntimeError("Bluetooth controller did not answer")
+
+    async def detach(self):
+        self.detaches += 1
+
+
+@async_test
+async def test_a_failing_bluetooth_side_never_stops_zigbee():
+    sims = []
+
+    async def open_transport():
+        (hr, hw), (sr, sw) = make_link()
+        sim = SimSecondary(apps={5: Ezsp18()})
+        sim.start(sr, sw)
+        sims.append(sim)
+        return hr, hw
+
+    ble = FailingBle()
+    bridge = ash_bridge.Bridge(open_transport, primary_kwargs=FAST, t_rx_ack=0.3, ble=ble)
+    port = await bridge.start("127.0.0.1", 0)
+    try:
+        assert ble.attaches == 1
+        ezsp = bellows_ezsp.EZSP(device_config(port))
+        await ezsp.connect(use_thread=False)
+        assert ezsp.ezsp_version == 18
+        await ezsp.disconnect()
+    finally:
+        await bridge.close()
+        for s in sims:
+            await s.stop()
+    assert ble.detaches >= 1

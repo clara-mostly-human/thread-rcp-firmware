@@ -23,6 +23,9 @@ already fresh (rebooted since the last EZSP frame), which is what it arranges af
 client disconnect so ZHA's start is quick.
 
     uv run --no-project --with pyserial python ash_bridge.py /dev/cu.usbserial-XXXX --port 6638
+
+With Bluetooth (the default) the same process also runs ble_proxy: Bumble on CPC endpoint 14,
+served to HA as an ESPHome Bluetooth proxy on --esphome-port (needs bumble and aioesphomeapi).
 """
 
 from __future__ import annotations
@@ -264,8 +267,10 @@ class Bridge:
     """Owns the dongle (through CPC) and serves one ASH host at a time over TCP."""
 
     def __init__(self, open_transport: Callable[[], Awaitable[tuple]], *,
-                 primary_kwargs: dict | None = None, t_rx_ack: float = T_RX_ACK) -> None:
+                 primary_kwargs: dict | None = None, t_rx_ack: float = T_RX_ACK,
+                 ble=None) -> None:
         self._open_transport = open_transport
+        self._ble = ble                      # ble_proxy.BleScanner, attached after every reboot
         self._primary_kwargs = primary_kwargs or {}
         self._t_rx_ack = t_rx_ack
         self._primary: cpc.CpcPrimary | None = None
@@ -281,6 +286,9 @@ class Bridge:
         self.reboots = 0
 
     async def _close_ncp(self) -> None:
+        if self._ble is not None:
+            with contextlib.suppress(Exception):
+                await self._ble.detach()
         if self._reader_task:
             self._reader_task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
@@ -302,6 +310,13 @@ class Bridge:
             self._reader_task = asyncio.create_task(self._read_ncp(self._ep), name="ezsp-rx")
             self._fresh = True
             self.reboots += 1
+            if self._ble is not None:
+                # The Bluetooth side must never take Zigbee down with it.
+                try:
+                    hci_ep = await self._primary.connect_endpoint(cpc.EP_BLUETOOTH_RCP)
+                    await self._ble.attach(hci_ep)
+                except Exception:
+                    _LOG.exception("Bluetooth side failed to start; Zigbee continues")
             _LOG.info("chip rebooted (CPC %s, app %r); Zigbee endpoint connected",
                       ".".join(map(str, info.cpc_version)), info.app_version)
 
@@ -402,11 +417,21 @@ class Bridge:
 
 
 async def _main(args: argparse.Namespace) -> None:
-    bridge = Bridge(lambda: cpc.open_serial(args.device, args.baud))
+    proxy = scanner = None
+    if not args.no_bluetooth:
+        import ble_proxy
+        scanner = ble_proxy.BleScanner(lambda adv: None, interval_ms=args.scan_interval,
+                                       window_ms=args.scan_window)
+        proxy = ble_proxy.EspHomeProxyServer(scanner)
+    bridge = Bridge(lambda: cpc.open_serial(args.device, args.baud), ble=scanner)
     await bridge.start(args.host, args.port)
+    if proxy is not None:
+        await proxy.start(args.host, args.esphome_port)
     try:
         await asyncio.Event().wait()
     finally:
+        if proxy is not None:
+            await proxy.close()
         await bridge.close()
 
 
@@ -416,6 +441,11 @@ if __name__ == "__main__":
     ap.add_argument("--baud", type=int, default=460800)
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=6638)
+    ap.add_argument("--esphome-port", type=int, default=6053,
+                    help="ESPHome API port of the Bluetooth proxy")
+    ap.add_argument("--no-bluetooth", action="store_true", help="Zigbee only")
+    ap.add_argument("--scan-interval", type=float, default=150, help="ms")
+    ap.add_argument("--scan-window", type=float, default=30, help="ms")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO,
