@@ -20,7 +20,6 @@ sl_core_config.h=-2018153270
 sl_cpc_config.h=1889157994
 sl_cpc_drv_uart_usart_vcom_config.h=-643168323
 sl_cpc_kernel_config.h=486995769
-sl_cpc_security_config.h=-421424697
 sl_custom_manufacturing_token_header.h=133231362
 sl_custom_token_header.h=-551848200
 sl_debug_swo_config.h=1207363231

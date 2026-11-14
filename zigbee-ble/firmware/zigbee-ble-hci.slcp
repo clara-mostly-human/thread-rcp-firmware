@@ -28,6 +28,7 @@ component:
 - {id: cpc_secondary}
 - instance: [vcom]
   id: cpc_secondary_driver_uart_usart
+- {id: cpc_security_secondary_none}
 - {id: freertos}
 - {id: freertos_heap_3}
 - {id: rail_lib_multiprotocol}

@@ -40,6 +40,8 @@ component:
   - id: freertos_heap_3
   - id: toolchain_gcc
   - id: cpc_secondary
+  # cpc_secondary pulls in cpc_security_secondary unless this is selected
+  - id: cpc_security_secondary_none
   - id: rail_util_pti
   - id: rail_util_coex
   - id: bootloader_interface
