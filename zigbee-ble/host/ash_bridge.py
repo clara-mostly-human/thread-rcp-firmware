@@ -284,6 +284,8 @@ class Bridge:
         self._closing = False
         self._server: asyncio.base_events.Server | None = None
         self.reboots = 0
+        self.ezsp_to_ncp = 0                # EZSP frames host -> chip
+        self.ezsp_from_ncp = 0              # EZSP frames chip -> host (responses and callbacks)
 
     async def _close_ncp(self) -> None:
         if self._ble is not None:
@@ -324,6 +326,7 @@ class Bridge:
         try:
             while True:
                 ezsp = await ep.read()
+                self.ezsp_from_ncp += 1
                 if self._session:
                     self._session.from_ncp(ezsp)
         except cpc.CpcError as exc:
@@ -336,6 +339,7 @@ class Bridge:
         if self._ep is None:
             raise cpc.CpcConnectionLost("no CPC link")
         self._fresh = False
+        self.ezsp_to_ncp += 1
         await self._ep.write(ezsp)
 
     def _schedule_reboot(self) -> None:
@@ -427,9 +431,22 @@ async def _main(args: argparse.Namespace) -> None:
     await bridge.start(args.host, args.port)
     if proxy is not None:
         await proxy.start(args.host, args.esphome_port)
+
+    async def stats() -> None:
+        last = (0, 0, 0)
+        while True:
+            await asyncio.sleep(args.stats_interval)
+            now = (bridge.ezsp_to_ncp, bridge.ezsp_from_ncp, scanner.adverts if scanner else 0)
+            d = [b - a for a, b in zip(last, now)]
+            _LOG.info("last %ds: EZSP %d to chip, %d from chip; Bluetooth %d advertisements; "
+                      "chip reboots so far %d", args.stats_interval, d[0], d[1], d[2], bridge.reboots)
+            last = now
+
+    stats_task = asyncio.create_task(stats())
     try:
         await asyncio.Event().wait()
     finally:
+        stats_task.cancel()
         if proxy is not None:
             await proxy.close()
         await bridge.close()
@@ -446,6 +463,7 @@ if __name__ == "__main__":
     ap.add_argument("--no-bluetooth", action="store_true", help="Zigbee only")
     ap.add_argument("--scan-interval", type=float, default=150, help="ms")
     ap.add_argument("--scan-window", type=float, default=30, help="ms")
+    ap.add_argument("--stats-interval", type=int, default=300, help="seconds between statistics lines")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO,
