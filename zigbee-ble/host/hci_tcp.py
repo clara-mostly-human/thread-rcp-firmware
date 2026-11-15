@@ -203,6 +203,15 @@ class HciTcpServer:
                          took * 1000, ", after NimBLE's 2 s timeout" if took > UNANSWERED else "",
                          cmd.acked_text(), cmd.frames - 1, cmd.silence_s * 1000)
 
+    def _forget_at_reset(self, now: float) -> None:
+        # The host gave up on these and resets the controller: an answer that still comes must
+        # not be matched to a later command with the same opcode.
+        for c in self._cmds:
+            _LOG.warning("HCI command %s still unanswered when the host reset the controller, "
+                         "%.0f ms after it was sent (%s; %d frames from the chip since)",
+                         opcode_name(c.opcode), (now - c.sent) * 1000, c.acked_text(), c.frames)
+        self._cmds.clear()
+
     async def _watch(self) -> None:
         while True:
             await asyncio.sleep(self.check_interval)
@@ -244,6 +253,8 @@ class HciTcpServer:
                     cmd = None
                     if packet[0] == 0x01:
                         cmd = _Command(packet[1] | packet[2] << 8, time.monotonic())
+                        if cmd.opcode == 0x0C03:
+                            self._forget_at_reset(cmd.sent)
                         self._cmds.append(cmd)
                         self.commands.commands += 1
                     t0 = time.monotonic()

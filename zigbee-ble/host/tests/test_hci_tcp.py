@@ -211,3 +211,32 @@ async def test_slow_cpc_write_is_logged_and_reboot_forgets_commands(caplog, monk
         writer.close()
         ep.to_host.put_nowait(None)
         await srv.close()
+
+
+@async_test
+async def test_host_reset_forgets_unanswered_commands(caplog):
+    ep = FakeEp()
+    srv = hci_tcp.HciTcpServer("127.0.0.1", 0)
+    await srv.attach(ep)
+    reader, writer = await _host(srv)
+    try:
+        writer.write(bytes.fromhex("010c20020100"))           # Scan Enable, never answered
+        await writer.drain()
+        await _until(lambda: len(ep.written) == 1)
+        writer.write(bytes.fromhex("01030c00"))                # the host gives up: Reset
+        await writer.drain()
+        await _until(lambda: len(ep.written) == 2)
+        assert [c.opcode for c in srv._cmds] == [0x0C03]
+        assert "0x200c (LE Set Scan Enable) still unanswered when the host reset" in caplog.text
+        ep.to_host.put_nowait(bytes.fromhex("040e0401030c00"))
+        await _until(lambda: srv.commands.answered == 1)
+        writer.write(bytes.fromhex("010c20020100"))           # a new Scan Enable after the reset
+        await writer.drain()
+        await _until(lambda: len(ep.written) == 3)
+        ep.to_host.put_nowait(bytes.fromhex("040e04010c2000"))
+        await _until(lambda: srv.commands.answered == 2)
+        assert srv._cmds == []
+    finally:
+        writer.close()
+        ep.to_host.put_nowait(None)
+        await srv.close()
