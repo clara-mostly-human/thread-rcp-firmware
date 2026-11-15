@@ -71,6 +71,11 @@ class HciTcpServer:
             _LOG.info("raw HCI (H4) of the chip's Bluetooth controller on %s:%d", self.host, self.port)
 
     async def detach(self) -> None:
+        if self._server is not None:
+            # Stop listening while there is no controller: a host stack's reconnect is refused
+            # until attach() listens again, instead of being accepted and dropped.
+            self._server.close()
+            self._server = None
         if self._client is not None:
             self._client.close()               # the host stack must start over with the new chip
             self._client = None
@@ -83,11 +88,6 @@ class HciTcpServer:
 
     async def close(self) -> None:
         await self.detach()
-        if self._server is not None:
-            self._server.close()
-            with contextlib.suppress(Exception):
-                await asyncio.wait_for(self._server.wait_closed(), 5)
-            self._server = None
 
     async def _from_controller(self, ep: cpc.Endpoint) -> None:
         try:
@@ -102,6 +102,12 @@ class HciTcpServer:
 
     async def _serve(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         peer = writer.get_extra_info("peername")
+        if self._ep is None:
+            # The chip is rebooting: refuse now, so the host stack retries its connection
+            # shortly instead of sending commands into the void and waiting out its timeout.
+            _LOG.debug("refusing host stack %s: Bluetooth controller not attached yet", peer)
+            writer.close()
+            return
         if self._client is not None and not self._client.is_closing():
             # The newest host stack wins: a new connection means the previous host restarted or
             # its connection went stale (and a readiness probe must not lock the real host out).

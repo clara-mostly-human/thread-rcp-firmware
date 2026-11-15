@@ -74,3 +74,26 @@ async def test_tcp_host_reaches_the_controller_and_back():
         writer.close()
         ep.to_host.put_nowait(None)
         await srv.close()
+
+
+@async_test
+async def test_host_is_refused_while_the_chip_reboots():
+    srv = hci_tcp.HciTcpServer("127.0.0.1", 0)
+    await srv.attach(FakeEp())
+    port = srv._server.sockets[0].getsockname()[1]
+    await srv.detach()                                   # chip rebooting: not listening
+    with pytest.raises(ConnectionRefusedError):
+        await asyncio.open_connection("127.0.0.1", port)
+    srv.port = port                                      # listen on the same port again
+    ep2 = FakeEp()
+    await srv.attach(ep2)                                # back: hosts are accepted again
+    reader, writer = await asyncio.open_connection("127.0.0.1", port)
+    writer.write(bytes.fromhex("01030c00"))
+    await writer.drain()
+    for _ in range(100):
+        if ep2.written:
+            break
+        await asyncio.sleep(0.01)
+    assert ep2.written == [bytes.fromhex("01030c00")]
+    writer.close()
+    await srv.close()
