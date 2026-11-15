@@ -24,8 +24,8 @@ client disconnect so ZHA's start is quick.
 
     uv run --no-project --with pyserial python ash_bridge.py /dev/cu.usbserial-XXXX --port 6638
 
-With Bluetooth (the default) the same process also runs ble_proxy: Bumble on CPC endpoint 14,
-served to HA as an ESPHome Bluetooth proxy on --esphome-port (needs bumble and aioesphomeapi).
+The same process serves the chip's Bluetooth controller as raw HCI (hci_tcp, CPC endpoint 14)
+on --hci-tcp (default 14433) for a host stack such as nimbled; --no-bluetooth turns it off.
 """
 
 from __future__ import annotations
@@ -270,7 +270,7 @@ class Bridge:
                  primary_kwargs: dict | None = None, t_rx_ack: float = T_RX_ACK,
                  ble=None) -> None:
         self._open_transport = open_transport
-        self._ble = ble                      # ble_proxy.BleScanner, attached after every reboot
+        self._ble = ble                      # hci_tcp.HciTcpServer, attached after every reboot
         self._primary_kwargs = primary_kwargs or {}
         self._t_rx_ack = t_rx_ack
         self._primary: cpc.CpcPrimary | None = None
@@ -421,20 +421,12 @@ class Bridge:
 
 
 async def _main(args: argparse.Namespace) -> None:
-    proxy = scanner = None
-    if args.hci_tcp:
-        # Raw HCI for an external host stack instead of the built-in Bumble proxy.
+    scanner = None
+    if not args.no_bluetooth:
         import hci_tcp
         scanner = hci_tcp.HciTcpServer(args.host, args.hci_tcp)
-    elif not args.no_bluetooth:
-        import ble_proxy
-        scanner = ble_proxy.BleScanner(lambda adv: None, interval_ms=args.scan_interval,
-                                       window_ms=args.scan_window)
-        proxy = ble_proxy.EspHomeProxyServer(scanner)
     bridge = Bridge(lambda: cpc.open_serial(args.device, args.baud), ble=scanner)
     await bridge.start(args.host, args.port)
-    if proxy is not None:
-        await proxy.start(args.host, args.esphome_port)
 
     async def stats() -> None:
         last = (0, 0, 0)
@@ -451,8 +443,6 @@ async def _main(args: argparse.Namespace) -> None:
         await asyncio.Event().wait()
     finally:
         stats_task.cancel()
-        if proxy is not None:
-            await proxy.close()
         await bridge.close()
 
 
@@ -462,13 +452,9 @@ if __name__ == "__main__":
     ap.add_argument("--baud", type=int, default=460800)
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=6638)
-    ap.add_argument("--esphome-port", type=int, default=6053,
-                    help="ESPHome API port of the Bluetooth proxy")
     ap.add_argument("--no-bluetooth", action="store_true", help="Zigbee only")
-    ap.add_argument("--hci-tcp", type=int, default=0, metavar="PORT",
-                    help="serve the chip's raw HCI (H4) on this TCP port instead of the Bumble proxy")
-    ap.add_argument("--scan-interval", type=float, default=150, help="ms")
-    ap.add_argument("--scan-window", type=float, default=30, help="ms")
+    ap.add_argument("--hci-tcp", type=int, default=14433, metavar="PORT",
+                    help="serve the chip's raw HCI (H4) on this TCP port")
     ap.add_argument("--stats-interval", type=int, default=300, help="seconds between statistics lines")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
