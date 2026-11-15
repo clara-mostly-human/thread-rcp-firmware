@@ -29,6 +29,7 @@ import asyncio
 import enum
 import logging
 import struct
+import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -948,6 +949,8 @@ class CpcPrimary:
                                 f"{retransmits} retransmissions")
                             ep._fail(exc)
                             raise exc from None
+                        _LOG.warning("endpoint %d: frame seq %d not acknowledged within %.0f ms, "
+                                     "resending", ep.id, pending.seq, rto * 1000)
                         rto = min(rto * 2, self.max_rto)            # sl_cpc.c:4989-4993
                         retransmits += 1
                         ep.stats.retransmits += 1
@@ -992,7 +995,12 @@ class CpcPrimary:
                 if not data:
                     self._fatal(CpcConnectionLost("transport closed (end of stream)"))
                     return
-                for frame in self.decoder.feed(data):
+                skipped = self.decoder.discarded_bytes
+                frames = self.decoder.feed(data)
+                if self.decoder.discarded_bytes > skipped and self._started:
+                    _LOG.warning("skipped %d bytes that were not a valid frame",
+                                 self.decoder.discarded_bytes - skipped)
+                for frame in frames:
                     try:
                         self._on_frame(frame)
                     except CpcError as exc:
@@ -1049,6 +1057,7 @@ class CpcPrimary:
 
     def _on_iframe(self, ep: Endpoint, frame: Frame) -> None:
         if not frame.fcs_ok:
+            _LOG.warning("endpoint %d: checksum error in frame seq %d, rejecting", ep.id, frame.seq)
             self._send_reject(ep.id, ep.ack, Reject.CHECKSUM_MISMATCH)    # sl_cpc.c:3650-3651
             return
         if frame.seq == ep.ack:
@@ -1066,8 +1075,12 @@ class CpcPrimary:
                 ep._deliver(frame.payload)
         elif frame.seq == (ep.ack - 1) & 7:
             ep.stats.rx_duplicates += 1                                   # sl_cpc.c:3913-3918
+            _LOG.warning("endpoint %d: chip resent frame seq %d (our acknowledgement was lost or "
+                         "late)", ep.id, frame.seq)
             self._send_rr(ep)
         else:
+            _LOG.warning("endpoint %d: frame seq %d out of sequence (expected %d), rejecting",
+                         ep.id, frame.seq, ep.ack)
             self._send_reject(ep.id, ep.ack, Reject.SEQUENCE_MISMATCH)   # sl_cpc.c:3906-3910
 
     def _on_sframe(self, ep: Endpoint, frame: Frame) -> None:
@@ -1185,7 +1198,11 @@ class SerialWriter:
     def write(self, data: bytes) -> None:
         if self._closed:
             raise CpcConnectionLost("serial port closed")
-        self._ser.write(data)
+        t0 = time.monotonic()
+        self._ser.write(data)          # blocking: the whole event loop waits for it
+        took = time.monotonic() - t0
+        if took > 0.05:
+            _LOG.warning("serial write of %d bytes blocked for %.0f ms", len(data), took * 1000)
 
     async def drain(self) -> None:
         return None

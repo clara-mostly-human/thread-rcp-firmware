@@ -393,6 +393,20 @@ class Bridge:
         while data := await reader.read(4096):
             await session.feed(data)
 
+    def link_counters(self) -> str:
+        """CPC link error counts since the last chip reboot (a reboot starts a new link)."""
+        p = self._primary
+        if p is None:
+            return "no link"
+        d = p.decoder
+        parts = [f"skipped bytes {d.discarded_bytes}, bad headers {d.header_errors}, "
+                 f"checksum errors {d.fcs_errors}"]
+        for ep in p._endpoints.values():
+            st = ep.stats
+            parts.append(f"ep{ep.id} resent {st.retransmits}, duplicates {st.rx_duplicates}, "
+                         f"rejects {st.rejects_sent} sent/{st.rejects_received} received")
+        return "; ".join(parts)
+
     async def start(self, host: str = "127.0.0.1", port: int = 6638) -> int:
         await self.reboot_ncp()
         self._server = await asyncio.start_server(self._serve, host, port)
@@ -428,21 +442,45 @@ async def _main(args: argparse.Namespace) -> None:
     bridge = Bridge(lambda: cpc.open_serial(args.device, args.baud), ble=scanner)
     await bridge.start(args.host, args.port)
 
+    stalls = {"max": 0.0}
+
+    async def loop_watch() -> None:
+        # A stalled event loop stops everything at once: CPC acknowledgements, Zigbee, HCI.
+        loop = asyncio.get_running_loop()
+        while True:
+            t = loop.time()
+            await asyncio.sleep(0.1)
+            lag = loop.time() - t - 0.1
+            stalls["max"] = max(stalls["max"], lag)
+            if lag > 0.25:
+                _LOG.warning("bridge event loop stalled for %.0f ms", lag * 1000)
+
     async def stats() -> None:
         last = (0, 0, 0)
         while True:
             await asyncio.sleep(args.stats_interval)
             now = (bridge.ezsp_to_ncp, bridge.ezsp_from_ncp, scanner.adverts if scanner else 0)
             d = [b - a for a, b in zip(last, now)]
-            _LOG.info("last %ds: EZSP %d to chip, %d from chip; Bluetooth %d advertisements; "
+            _LOG.info("last %ds: EZSP %d to chip, %d from chip; Bluetooth %d HCI events; "
                       "chip reboots so far %d", args.stats_interval, d[0], d[1], d[2], bridge.reboots)
+            if scanner is not None:
+                c = scanner.commands.take()
+                _LOG.info("last %ds: HCI commands %d, answered %d, slowest %.0f ms, over %.0f ms %d, "
+                          "unanswered at %.0f s %d (%d answered later); slowest CPC write %.0f ms",
+                          args.stats_interval, c.commands, c.answered, c.slowest_s * 1000,
+                          hci_tcp.SLOW_COMMAND * 1000, c.slow, hci_tcp.UNANSWERED, c.unanswered,
+                          c.late, c.slowest_write_s * 1000)
+            _LOG.info("CPC link since chip reboot: %s; longest event loop stall in the last %ds: "
+                      "%.0f ms", bridge.link_counters(), args.stats_interval, stalls["max"] * 1000)
+            stalls["max"] = 0.0
             last = now
 
-    stats_task = asyncio.create_task(stats())
+    tasks = [asyncio.create_task(stats()), asyncio.create_task(loop_watch())]
     try:
         await asyncio.Event().wait()
     finally:
-        stats_task.cancel()
+        for t in tasks:
+            t.cancel()
         await bridge.close()
 
 
