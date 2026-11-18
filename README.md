@@ -19,6 +19,9 @@ fb0446f53). Everything is source except RAIL, the radio library, which Silicon L
 - `board/` — what we know about the hardware and how we know it
 - `scripts/gbl.py` — inspect and create `.gbl` upgrade files (replaces Simplicity Commander)
 - `out/` — built images
+- `zigbee-ble/` — Zigbee NCP + Bluetooth HCI over CPC, and the Mac-side CPC host (`zigbee-ble/host`)
+- `thread-ble/` — Thread RCP + Bluetooth HCI over CPC; `thread-ble/otbr/` holds otbr-agent's RCP vendor
+  interface for it. Design, tests and hardware plan: `docs/thread-ble.md`
 
 ## Rules
 
