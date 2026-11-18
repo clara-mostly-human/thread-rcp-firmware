@@ -64,6 +64,7 @@ PROTOCOL_VERSION = 6           # inc/sli_cpc.h:84
 
 EP_SYSTEM = 0                  # inc/sli_cpc.h:221
 EP_ZIGBEE = 5                  # inc/sli_cpc.h:233
+EP_15_4 = 12                   # inc/sli_cpc.h:254, OpenThread RCP Spinel (ncp_cpc.cpp:126)
 EP_BLUETOOTH_RCP = 14          # inc/sli_cpc.h:260
 
 RE_TRANSMIT_MAX = 10           # inc/sli_cpc.h:351
@@ -607,6 +608,7 @@ class CpcPrimary:
         self._expect_reset = False
         self._started = False
         self._dead: CpcError | None = None
+        self._dead_event = asyncio.Event()
         self._reader_task: asyncio.Task[None] | None = None
 
     # -- lifecycle -----------------------------------------------------------------------------
@@ -900,6 +902,12 @@ class CpcPrimary:
 
     # -- link layer ----------------------------------------------------------------------------
 
+    async def wait_dead(self) -> CpcError:
+        """Wait until the link is gone (transport closed, unexpected secondary reset, close())."""
+        await self._dead_event.wait()
+        assert self._dead is not None
+        return self._dead
+
     def _check_alive(self) -> None:
         if self._dead is not None:
             raise self._dead
@@ -1015,6 +1023,7 @@ class CpcPrimary:
     def _fatal(self, exc: CpcError) -> None:
         if self._dead is None:
             self._dead = exc
+        self._dead_event.set()
         for fut in self._sys_waiters.values():
             if not fut.done():
                 fut.set_exception(exc)

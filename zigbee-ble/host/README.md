@@ -1,5 +1,8 @@
 # zigbee-ble host: CPC primary, probe, tests
 
+The same CPC host also serves the thread-ble firmware (Thread RCP + Bluetooth HCI over CPC):
+see `thread_ble_bridge.py` and `../../docs/thread-ble.md`.
+
 A small Python host (primary) for Silicon Labs CPC protocol v6 over a UART, for the
 zigbee-ble firmware: Zigbee NCP (EZSP) on CPC endpoint 5 and a Bluetooth controller (HCI)
 on endpoint 14. Written from the Zlib chip-side CPC sources of Simplicity SDK 2025.6.3; no
@@ -11,6 +14,10 @@ cpcd/libcpc code was read.
 | `probe.py` | CLI: CPC identity, EZSP `version`, HCI Reset + Read Local Version, optional passive LE scan |
 | `tests/sim_secondary.py` | simulated secondary modelled on the SDK C code, sharing no code with `cpc.py` |
 | `tests/test_cpc.py` | 46 tests, simulated secondary over in-memory streams |
+| `spinel_socket.py` | thread-ble firmware: CPC endpoint 12 (OpenThread RCP, Spinel) on a Unix socket for otbr-agent's RCP vendor interface; protocol in the module docstring and `docs/thread-ble.md` |
+| `thread_ble_bridge.py` | thread-ble firmware: owns the dongle, Spinel socket + raw HCI (`hci_tcp.py`), reboots and reconnects the chip after a lost link or a hardware-reset request |
+| `tests/sim_rcp.py` | the RCP side of endpoint 12 as `ncp_cpc.cpp` presents it (length-prefixed frames, nothing sent before the host's first frame) |
+| `tests/test_spinel_socket.py` | 17 tests: socket protocol, server, bridge over the simulated chip with Thread and Bluetooth together |
 
 ## Run
 
