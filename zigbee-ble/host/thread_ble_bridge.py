@@ -160,7 +160,7 @@ async def _main(args: argparse.Namespace) -> None:
         import hci_tcp
         ble = hci_tcp.HciTcpServer(args.host, args.hci_tcp)
     bridge: ThreadBleBridge | None = None
-    spinel = spinel_socket.SpinelSocketServer(args.spinel_socket,
+    spinel = spinel_socket.SpinelSocketServer(args.spinel_socket, bus_speed=args.baud,
                                               request_reset=lambda: bridge.request_reset())
     bridge = ThreadBleBridge(lambda: cpc.open_serial(args.device, args.baud), spinel=spinel, ble=ble)
     await bridge.start(wait_up=None)

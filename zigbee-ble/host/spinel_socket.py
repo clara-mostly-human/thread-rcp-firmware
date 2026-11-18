@@ -21,7 +21,8 @@ The socket (AF_UNIX, SOCK_STREAM) carries messages
 
   0x00 HELLO   server -> client, the first message on every connection:
                protocol version u8 (1) | largest Spinel frame the chip accepts, u16 big-endian
-               (its CPC RX capability; 0 while not known yet)
+               (its CPC RX capability; 0 while not known yet) | UART bit rate to the chip,
+               u32 big-endian (OpenThread's bus speed, used for its bus transfer times)
   0x01 SPINEL  one Spinel frame, either direction, passed through unchanged
   0x02 RESET   client -> server, empty: reboot the chip (the RCP's hardware reset)
                server -> client: the chip has (re)booted and endpoint 12 is connected again;
@@ -69,8 +70,8 @@ def encode(kind: int, payload: bytes = b"") -> bytes:
     return HEADER.pack(kind, len(payload)) + payload
 
 
-def hello(max_frame: int) -> bytes:
-    return encode(HELLO, struct.pack(">BH", PROTOCOL_VERSION, max_frame))
+def hello(max_frame: int, bus_speed: int) -> bytes:
+    return encode(HELLO, struct.pack(">BHI", PROTOCOL_VERSION, max_frame, bus_speed))
 
 
 def reset_notice(reason: int | None) -> bytes:
@@ -142,9 +143,10 @@ class SpinelSocketServer:
     and the client connection outlive them.
     """
 
-    def __init__(self, path: str, *, request_reset: Callable[[], None] | None = None,
-                 mode: int = 0o600) -> None:
+    def __init__(self, path: str, *, bus_speed: int = 460800,
+                 request_reset: Callable[[], None] | None = None, mode: int = 0o600) -> None:
         self.path = path
+        self.bus_speed = bus_speed
         self.mode = mode
         self._request_reset = request_reset
         self._server: asyncio.base_events.Server | None = None
@@ -274,7 +276,7 @@ class SpinelSocketServer:
         self._client = writer
         self.clients += 1
         _LOG.info("Spinel client connected (chip %s)", "attached" if self.attached else "rebooting")
-        writer.write(hello(self._max_frame))
+        writer.write(hello(self._max_frame, self.bus_speed))
         split = MessageReader()
         try:
             while data := await reader.read(4096):

@@ -31,14 +31,14 @@ def sock_path():
 # --- codec -------------------------------------------------------------------------------------
 
 def test_messages_survive_any_chunking():
-    stream = (ss.hello(256) + ss.encode(ss.SPINEL, b"\x80\x01\x02") + ss.encode(ss.RESET)
+    stream = (ss.hello(256, 460800) + ss.encode(ss.SPINEL, b"\x80\x01\x02") + ss.encode(ss.RESET)
               + ss.reset_notice(None) + ss.encode(ss.SPINEL, bytes(range(256)) * 5))
     for size in (1, 2, 3, 7, 4096):
         r = ss.MessageReader()
         out = []
         for i in range(0, len(stream), size):
             out += r.feed(stream[i:i + size])
-        assert out == [(ss.HELLO, b"\x01\x01\x00"), (ss.SPINEL, b"\x80\x01\x02"), (ss.RESET, b""),
+        assert out == [(ss.HELLO, b"\x01\x01\x00\x00\x07\x08\x00"), (ss.SPINEL, b"\x80\x01\x02"), (ss.RESET, b""),
                        (ss.RESET, b"\xff\xff\xff\xff"), (ss.SPINEL, bytes(range(256)) * 5)], size
 
 
@@ -138,7 +138,7 @@ async def test_hello_then_frames_both_ways(sock_path):
         ep = FakeEp()
         await srv.attach(ep, max_frame=256, reset_reason=114)
         c = await Client.connect(sock_path)
-        assert await c.recv() == (ss.HELLO, struct.pack(">BH", 1, 256))
+        assert await c.recv() == (ss.HELLO, struct.pack(">BHI", 1, 256, 460800))
         c.send(ss.SPINEL, b"\x80\x01\x02")
         c.send(ss.SPINEL, b"\x81\x02\x01")
         await until(lambda: len(ep.written) == 2)
@@ -176,7 +176,7 @@ async def test_refuses_to_replace_a_regular_file(sock_path):
 async def test_frames_while_rebooting_and_oversized_frames_are_dropped(sock_path):
     async with server(sock_path) as srv:
         c = await Client.connect(sock_path)
-        assert await c.recv() == (ss.HELLO, struct.pack(">BH", 1, 0))     # chip not up yet
+        assert await c.recv() == (ss.HELLO, struct.pack(">BHI", 1, 0, 460800))   # chip not up
         c.send(ss.SPINEL, b"\x80\x01\x02")
         await until(lambda: srv.stats.dropped_rebooting == 1)
         ep = FakeEp()
@@ -305,7 +305,7 @@ async def test_otbr_reset_reaches_the_rcp_and_the_rcp_answers(sock_path):
     async with bridge_with_chips(sock_path, hci=False) as (bridge, chips):
         assert bridge.reboots == 1 and bridge.info.reset_reason == 114
         c = await Client.connect(sock_path)
-        assert await c.recv() == (ss.HELLO, struct.pack(">BH", 1, 256))
+        assert await c.recv() == (ss.HELLO, struct.pack(">BHI", 1, 256, 460800))
         # what OpenThread sends first: SPINEL_CMD_RESET with SPINEL_RESET_STACK
         reset = bytes([FLAG, CMD_RESET, RESET_STACK])
         c.send(ss.SPINEL, reset)
