@@ -1,0 +1,75 @@
+# Silicon Labs Project Configuration Tools: slcp, v0, Component selection file.
+project_name: thread-ble-hci
+label: Thread RCP + Bluetooth HCI (CPC, UART)
+author: infra/ha
+description: |
+  OpenThread radio co-processor (Spinel) and Bluetooth controller (HCI) over CPC on one UART, dynamic multiprotocol, single 802.15.4 instance.
+category: OpenThread Examples
+package: openthread
+quality: experimental
+source:
+- {path: app.c}
+include:
+- path: .
+  file_list:
+  - {path: app.h}
+sdk: {id: simplicity_sdk, version: 2025.6.3}
+toolchain_settings: []
+component:
+- {id: EFR32MG24A020F1024IM40}
+- {id: bluetooth_controller}
+- {id: bluetooth_feature_advertiser}
+- {id: bluetooth_feature_connection_phy_update}
+- {id: bluetooth_feature_connection_role_central}
+- {id: bluetooth_feature_connection_role_peripheral}
+- {id: bluetooth_feature_extended_advertiser}
+- {id: bluetooth_feature_extended_scanner}
+- {id: bluetooth_feature_legacy_scanner}
+- {id: bluetooth_hci_cpc}
+- {id: bootloader_interface}
+- {id: clock_manager}
+- {id: cpc_secondary}
+- instance: [vcom]
+  id: cpc_secondary_driver_uart_usart
+- {id: cpc_security_secondary_none}
+- {id: freertos}
+- {id: freertos_heap_3}
+- {id: ot_crash_handler}
+- {id: ot_diags}
+- {id: ot_ncp_cpc}
+- {id: ot_reset_utils}
+- {id: ot_stack_rcp}
+- {id: rail_lib_multiprotocol}
+- {id: rail_util_pti}
+- {id: sl_main}
+- {id: toolchain_gcc}
+- {id: toolchain_gcc_lto}
+template_contribution:
+- {name: component_catalog, priority: 0, value: bluetooth_ncp}
+configuration:
+- {name: SL_BT_CONFIG_USER_ADVERTISERS, value: '3'}
+- condition: [sl_main]
+  name: SL_MAIN_START_TASK_STACK_SIZE_BYTES
+  value: '2752'
+- {name: SL_STACK_SIZE, value: '2752'}
+- {name: SL_HEAP_SIZE, value: '15700'}
+- condition: [psa_crypto]
+  name: SL_PSA_KEY_USER_SLOT_COUNT
+  value: '0'
+- {name: SL_BOARD_ENABLE_VCOM, value: '1'}
+- {name: SL_CPC_DRV_UART_VCOM_BAUDRATE, value: '460800'}
+- {name: SL_CPC_DRV_UART_VCOM_FLOW_CONTROL_TYPE, value: usartHwFlowControlNone}
+- {name: OPENTHREAD_CONFIG_HEAP_EXTERNAL_ENABLE, value: '0'}
+- {name: OPENTHREAD_CONFIG_LOG_OUTPUT, value: OPENTHREAD_CONFIG_LOG_OUTPUT_NONE}
+- {name: OPENTHREAD_CONFIG_MULTIPAN_RCP_ENABLE, value: '0'}
+- {name: OPENTHREAD_CONFIG_MULTIPLE_INSTANCE_ENABLE, value: '0'}
+- {name: OPENTHREAD_CONFIG_MULTIPLE_STATIC_INSTANCE_ENABLE, value: '0'}
+- {name: OPENTHREAD_CONFIG_PLATFORM_KEY_REFERENCES_ENABLE, value: '0'}
+- {name: OPENTHREAD_CONFIG_MAC_CSL_RECEIVER_ENABLE, value: '0'}
+- {name: OPENTHREAD_CONFIG_MAC_CSL_AUTO_SYNC_ENABLE, value: '0'}
+- {name: SL_CPC_RX_BUFFER_MAX_COUNT, value: '15'}
+- {name: SL_CPC_TX_QUEUE_ITEM_MAX_COUNT, value: '15'}
+- {name: CIRCULAR_QUEUE_LEN_MAX, value: '16'}
+- {name: SL_OPENTHREAD_STACK_TASK_MEM_SIZE, value: '4608'}
+ui_hints: {}
+

@@ -8,3 +8,5 @@ out/*.s37
 out/*.hex
 out/*.map
 firmware/build/
+# a symlink to the main checkout's vendor/unpacked in a worktree
+vendor/unpacked
