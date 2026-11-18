@@ -1,8 +1,27 @@
 # thread-rcp-firmware
 
-Own the Thread radio: build the OpenThread RCP firmware for the SONOFF Dongle Plus MG24 from
-source on this machine, with every input archived locally, so the radio can be rebuilt, debugged
-and modified with the network unplugged.
+Own the radio: build firmware for the SONOFF Dongle Plus MG24 from source on this machine, with
+every input archived locally, so the radio can be rebuilt, debugged and modified with the network
+unplugged. Three images, each with its Mac-side host where it needs one:
+
+| Image | What | Mac side |
+|---|---|---|
+| `ot-rcp` (`firmware/`) | OpenThread RCP for the border router | none: otbr-agent speaks Spinel over the serial port |
+| `zigbee-ble` | Zigbee NCP + Bluetooth HCI over CPC | `zigbee-ble/host`: the bridge serves EZSP to ZHA (`socket://`) and raw HCI to nimbled |
+| `thread-ble` | Thread RCP + Bluetooth HCI over CPC | `thread_ble_bridge.py` and an OpenThread RCP vendor interface (`thread-ble/otbr`); see [docs/thread-ble.md](docs/thread-ble.md). Not yet tried on hardware |
+
+They are used by the native macOS Home Assistant ([supervisor](https://github.com/clara-mostly-human/supervisor)
+`macos_support` branch, whose installer flashes them; apps in
+[ha-macos-apps](https://github.com/clara-mostly-human/ha-macos-apps); Bluetooth host in
+[ha-macos-bluetooth](https://github.com/clara-mostly-human/ha-macos-bluetooth)).
+
+Built images are published as release assets with their SHA-256, not committed. Flash with
+`universal-silabs-flasher --device <port> --bootloader-reset rts_dtr flash --firmware <image>`;
+the application flash leaves the bootloader and the network settings (NVM3) alone.
+
+Licence: our own files (scripts, host programs, the vendor interface) are Apache-2.0
+([LICENSE](LICENSE)). Files generated from or copied out of Silicon Labs' SDK keep the licence
+in their headers (Zlib or Silicon Labs' MSLA); the SDK itself is not in this repository.
 
 Target: Simplicity SDK 2025.6.3 (Silicon Labs OpenThread SDK 2.7.3.0, upstream OpenThread
 fb0446f53). Everything is source except RAIL, the radio library, which Silicon Labs ships as

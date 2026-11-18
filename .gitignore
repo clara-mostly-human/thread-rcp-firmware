@@ -10,3 +10,6 @@ out/*.map
 firmware/build/
 # a symlink to the main checkout's vendor/unpacked in a worktree
 vendor/unpacked
+vendor/*.tar.gz
+# Images are published as release assets (with their SHA-256), not committed.
+out/*.gbl
