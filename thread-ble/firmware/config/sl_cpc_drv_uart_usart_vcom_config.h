@@ -77,21 +77,15 @@
 // <<< sl:start pin_tool >>>
 // <usart signal=TX,RX,(CTS),(RTS)> SL_CPC_DRV_UART_VCOM
 // $[USART_SL_CPC_DRV_UART_VCOM]
-#warning "CPC USART peripheral not configured"
-// #define SL_CPC_DRV_UART_VCOM_PERIPHERAL                 USART0
-// #define SL_CPC_DRV_UART_VCOM_PERIPHERAL_NO              0
-//
-// #define SL_CPC_DRV_UART_VCOM_TX_PORT                    gpioPortD
-// #define SL_CPC_DRV_UART_VCOM_TX_PIN                     13
-//
-// #define SL_CPC_DRV_UART_VCOM_RX_PORT                    gpioPortD
-// #define SL_CPC_DRV_UART_VCOM_RX_PIN                     14
-//
-// #define SL_CPC_DRV_UART_VCOM_CTS_PORT                   gpioPortD
-// #define SL_CPC_DRV_UART_VCOM_CTS_PIN                    13
-//
-// #define SL_CPC_DRV_UART_VCOM_RTS_PORT                   gpioPortD
-// #define SL_CPC_DRV_UART_VCOM_RTS_PIN                    14
+#define SL_CPC_DRV_UART_VCOM_PERIPHERAL                 USART0
+#define SL_CPC_DRV_UART_VCOM_PERIPHERAL_NO              0
+
+#define SL_CPC_DRV_UART_VCOM_TX_PORT                    gpioPortC
+#define SL_CPC_DRV_UART_VCOM_TX_PIN                     1
+
+#define SL_CPC_DRV_UART_VCOM_RX_PORT                    gpioPortC
+#define SL_CPC_DRV_UART_VCOM_RX_PIN                     2
+// Dongle-PMG24: CTS/RTS not wired (board/dongle-pmg24.md)
 // [USART_SL_CPC_DRV_UART_VCOM]$
 // <<< sl:end pin_tool >>>
 
